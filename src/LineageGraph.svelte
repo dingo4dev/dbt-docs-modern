@@ -26,6 +26,7 @@
   let selectedNode = null;
   let isFullscreen = false;
   let containerElement;
+  let hasInitialZoom = false; // Track if we've done initial zoom
   
   // Extract nodes and edges from manifest
   function buildGraph(manifest, focusModel = null) {
@@ -141,16 +142,33 @@
     };
   }
   
-  // Color scheme based on resource type
+  // Color scheme based on resource type (for table borders/headers - NEUTRAL)
   function getNodeColor(node) {
+    // All tables use neutral gray
+    return '#94a3b8'; // slate-400 - neutral for all types
+  }
+  
+  // Badge colors by materialization type
+  function getMaterializationColor(materialization) {
+    const colors = {
+      view: '#3b82f6', // blue
+      table: '#10b981', // green
+      incremental: '#f59e0b', // amber
+      ephemeral: '#8b5cf6', // purple
+    };
+    return colors[materialization] || '#6b7280'; // gray fallback
+  }
+  
+  // Badge colors by resource type
+  function getResourceTypeColor(type) {
     const colors = {
       model: '#f97316', // orange
-      source: '#3b82f6', // blue
-      seed: '#10b981', // green
-      snapshot: '#8b5cf6', // purple
+      source: '#0ea5e9', // sky
+      seed: '#84cc16', // lime
+      snapshot: '#a855f7', // purple
       test: '#ef4444' // red
     };
-    return colors[node.type] || '#6b7280';
+    return colors[type] || '#6b7280'; // gray fallback
   }
   
   // Get columns for a node (from manifest)
@@ -203,16 +221,56 @@
     window.graphSvg = svg;
     window.graphG = g;
     
-    // Create force simulation with LEFT-TO-RIGHT layout (horizontal) - WIDER spacing
+    // Define responsive variables EARLY (used in force simulation)
+    const isMobile = width < 768; // Tailwind md breakpoint
+    const tableWidth = isMobile ? 200 : 300; // 200px on mobile, 300px on desktop
+    const tableHalfWidth = tableWidth / 2;
+    
+    // Create force simulation - FLOWCHART LR (strong left-to-right)
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(links)
         .id(d => d.id)
-        .distance(300)) // Increased from 250 for wider tables
+        .distance(400)) // Very wide horizontal spacing for 300px tables
       .force('charge', d3.forceManyBody()
-        .strength(-1000)) // Stronger repulsion from -800
-      .force('x', d3.forceX(width / 2).strength(0.05)) // Weak horizontal centering
-      .force('y', d3.forceY(height / 2).strength(0.3)) // Stronger vertical centering (keep in rows)
-      .force('collision', d3.forceCollide().radius(120)); // Larger collision for 200px wide tables
+        .strength(-1400)) // Very strong repulsion
+      .force('x', d3.forceX(d => {
+        // Position based on depth (sources left, models right)
+        const depth = getNodeDepth(d, links);
+        return depth * 450; // 450px per level for wider tables
+      }).strength(0.8)) // STRONG horizontal positioning
+      .force('y', d3.forceY(height / 2).strength(0.1)) // WEAK vertical (allows stacking)
+      .force('collision', d3.forceCollide().radius(isMobile ? 110 : 160)); // Responsive collision radius
+    
+    // Helper: Calculate node depth (0 for sources, incrementing downstream)
+    function getNodeDepth(node, links) {
+      const visited = new Set();
+      const depths = new Map();
+      
+      // BFS to calculate depths
+      function calculateDepth(nodeId, depth) {
+        if (visited.has(nodeId)) return;
+        visited.add(nodeId);
+        depths.set(nodeId, Math.max(depths.get(nodeId) || 0, depth));
+        
+        // Find downstream nodes
+        links.forEach(link => {
+          if ((link.source.id || link.source) === nodeId) {
+            const targetId = link.target.id || link.target;
+            calculateDepth(targetId, depth + 1);
+          }
+        });
+      }
+      
+      // Start from nodes with no dependencies (sources)
+      const nodeDeps = new Set(links.map(l => l.target.id || l.target));
+      nodes.forEach(n => {
+        if (!nodeDeps.has(n.id)) {
+          calculateDepth(n.id, 0);
+        }
+      });
+      
+      return depths.get(node.id) || 0;
+    }
     
     // Add arrow markers for directed edges with animation
     const defs = svg.append('defs');
@@ -336,21 +394,21 @@
     feMerge.append('feMergeNode');
     feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
     
-    // Node background (table card) - WIDER
+    // Node background (table card) - RESPONSIVE width (variables defined earlier)
     node.append('rect')
-      .attr('width', 200) // Increased from 160 to 200
+      .attr('width', tableWidth)
       .attr('height', d => {
         const cols = getNodeColumnsForGraph(d);
-        return 45 + (cols.length * 28); // Increased spacing: 45px header + 28px per row
+        return 50 + (cols.length * 32); // Taller: 50px header + 32px per row
       })
-      .attr('x', -100)
+      .attr('x', -tableHalfWidth)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(45 + (cols.length * 28)) / 2;
+        return -(50 + (cols.length * 32)) / 2;
       })
       .attr('rx', 8) // More rounded corners
       .attr('fill', 'white')
-      .attr('stroke', d => d.id === selectedModel ? '#fbbf24' : getNodeColor(d))
+      .attr('stroke', d => d.id === selectedModel ? '#3b82f6' : getNodeColor(d))
       .attr('stroke-width', d => d.id === selectedModel ? 3 : 2)
       .attr('filter', 'url(#node-shadow)')
       .attr('class', 'transition-all dark:fill-gray-800');
@@ -371,14 +429,14 @@
       .attr('offset', '100%')
       .attr('stop-opacity', 0.85);
     
-    // Table header (node name + type)
+    // Table header (node name + type) - RESPONSIVE
     node.append('rect')
-      .attr('width', 200)
-      .attr('height', 38)
-      .attr('x', -100)
+      .attr('width', tableWidth)
+      .attr('height', 42)
+      .attr('x', -tableHalfWidth)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(45 + (cols.length * 28)) / 2;
+        return -(50 + (cols.length * 32)) / 2;
       })
       .attr('rx', 8)
       .attr('fill', d => getNodeColor(d))
@@ -406,15 +464,16 @@
         .attr('stop-opacity', 0.8);
     });
     
-    // LEFT TOP BADGE: Materialization type (for models) - MODERN style
+    // LEFT TOP BADGE: Materialization type (for models) - RESPONSIVE position
+    const leftBadgeX = isMobile ? -(tableHalfWidth - 8) : -142;
     node.filter(d => d.type === 'model').append('g')
       .attr('transform', d => {
         const cols = getNodeColumnsForGraph(d);
-        const topY = -(45 + (cols.length * 28)) / 2;
-        return `translate(-92, ${topY + 6})`;
+        const topY = -(50 + (cols.length * 32)) / 2;
+        return `translate(${leftBadgeX}, ${topY + 6})`;
       })
       .call(g => {
-        // Badge background with gradient
+        // Badge background with COLOR
         g.append('rect')
           .attr('width', d => {
             const text = d.materialization || 'view';
@@ -422,8 +481,7 @@
           })
           .attr('height', 16)
           .attr('rx', 4)
-          .attr('fill', 'rgba(0,0,0,0.15)')
-          .attr('class', 'backdrop-blur-sm');
+          .attr('fill', d => getMaterializationColor(d.materialization || 'view'));
         
         // Badge text
         g.append('text')
@@ -435,15 +493,16 @@
           .style('letter-spacing', '0.5px');
       });
     
-    // RIGHT TOP BADGE: Resource type - MODERN style
+    // RIGHT TOP BADGE: Resource type - RESPONSIVE position
+    const rightBadgeX = isMobile ? (tableHalfWidth - 60) : 80;
     node.append('g')
       .attr('transform', d => {
         const cols = getNodeColumnsForGraph(d);
-        const topY = -(45 + (cols.length * 28)) / 2;
-        return `translate(50, ${topY + 6})`;
+        const topY = -(50 + (cols.length * 32)) / 2;
+        return `translate(${rightBadgeX}, ${topY + 6})`;
       })
       .call(g => {
-        // Badge background
+        // Badge background with COLOR
         g.append('rect')
           .attr('width', d => {
             const typeLabels = {
@@ -458,8 +517,7 @@
           })
           .attr('height', 16)
           .attr('rx', 4)
-          .attr('fill', 'rgba(0,0,0,0.15)')
-          .attr('class', 'backdrop-blur-sm');
+          .attr('fill', d => getResourceTypeColor(d.type));
         
         // Badge text
         g.append('text')
@@ -480,63 +538,70 @@
           .style('letter-spacing', '0.5px');
       });
     
-    // Node name (header text, centered) - LARGER
+    // Node name (header text, centered) - RESPONSIVE length
+    const maxNameLength = isMobile ? 20 : 34;
     node.append('text')
-      .text(d => d.name.length > 22 ? d.name.substring(0, 20) + '..' : d.name)
+      .text(d => d.name.length > maxNameLength ? d.name.substring(0, maxNameLength - 2) + '..' : d.name)
       .attr('x', 0)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(45 + (cols.length * 28)) / 2 + 28;
+        return -(50 + (cols.length * 32)) / 2 + 30;
       })
       .attr('text-anchor', 'middle')
       .attr('class', 'fill-white text-base font-bold pointer-events-none')
-      .style('font-size', '14px');
+      .style('font-size', isMobile ? '13px' : '15px');
     
-    // Column rows - WIDER spacing
+    // Column rows - RESPONSIVE widths
+    const colLeftX = -(tableHalfWidth - 8);
+    const colRightX = tableHalfWidth - 8;
+    const colRowWidth = tableWidth - 12;
+    const maxColNameLength = isMobile ? 14 : 24;
+    const maxColTypeLength = isMobile ? 10 : 16;
+    
     node.each(function(d) {
       const cols = getNodeColumnsForGraph(d);
       const nodeGroup = d3.select(this);
-      const startY = -(45 + (cols.length * 28)) / 2 + 45;
+      const startY = -(50 + (cols.length * 32)) / 2 + 50;
       
       cols.forEach((col, i) => {
-        const y = startY + (i * 28);
+        const y = startY + (i * 32);
         
         // Column background for hover effect (every other row)
         if (i % 2 === 1) {
           nodeGroup.append('rect')
-            .attr('width', 196)
-            .attr('height', 26)
-            .attr('x', -98)
-            .attr('y', y - 10)
+            .attr('width', colRowWidth)
+            .attr('height', 30)
+            .attr('x', colLeftX)
+            .attr('y', y - 12)
             .attr('fill', '#f9fafb')
             .attr('class', 'dark:fill-gray-900/30');
         }
         
-        // Column name - LARGER
+        // Column name - RESPONSIVE
         nodeGroup.append('text')
-          .text(col.name.length > 16 ? col.name.substring(0, 14) + '..' : col.name)
-          .attr('x', -92)
+          .text(col.name.length > maxColNameLength ? col.name.substring(0, maxColNameLength - 2) + '..' : col.name)
+          .attr('x', colLeftX)
           .attr('y', y + 4)
           .attr('text-anchor', 'start')
           .attr('class', 'fill-gray-800 dark:fill-gray-200 text-sm font-medium pointer-events-none')
-          .style('font-size', '12px');
+          .style('font-size', isMobile ? '11px' : '13px');
         
-        // Column type - LARGER
+        // Column type - RESPONSIVE
         nodeGroup.append('text')
-          .text((col.type || col.data_type || 'string').substring(0, 12))
-          .attr('x', 92)
+          .text((col.type || col.data_type || 'string').substring(0, maxColTypeLength))
+          .attr('x', colRightX)
           .attr('y', y + 4)
           .attr('text-anchor', 'end')
           .attr('class', 'fill-gray-500 dark:fill-gray-400 text-xs font-mono pointer-events-none')
-          .style('font-size', '11px');
+          .style('font-size', isMobile ? '10px' : '12px');
         
         // Separator line
         if (i < cols.length - 1) {
           nodeGroup.append('line')
-            .attr('x1', -92)
-            .attr('x2', 92)
-            .attr('y1', y + 14)
-            .attr('y2', y + 14)
+            .attr('x1', colLeftX)
+            .attr('x2', colRightX)
+            .attr('y1', y + 16)
+            .attr('y2', y + 16)
             .attr('stroke', '#e5e7eb')
             .attr('stroke-width', 1)
             .attr('opacity', 0.5)
@@ -549,7 +614,7 @@
         const fullNode = manifest.nodes[d.id];
         const totalCols = fullNode?.columns ? Object.keys(fullNode.columns).length : 0;
         if (totalCols > 3) {
-          const y = startY + (cols.length * 28) - 6;
+          const y = startY + (cols.length * 32) - 8;
           nodeGroup.append('text')
             .text(`+${totalCols - 3} more columns...`)
             .attr('x', 0)
@@ -641,6 +706,9 @@
       if (!event.active) simulation.alphaTarget(0.3).restart();
       d.fx = d.x;
       d.fy = d.y;
+      // Disable flowchart forces when user drags
+      simulation.force('x', null);
+      simulation.force('y', null);
     }
     
     function dragged(event, d) {
@@ -650,31 +718,36 @@
     
     function dragended(event, d) {
       if (!event.active) simulation.alphaTarget(0);
-      d.fx = null;
-      d.fy = null;
+      // Keep node position fixed after drag (don't reset fx/fy)
+      // d.fx = null;  // Commented out - keep position
+      // d.fy = null;  // Commented out - keep position
     }
     
-    // Initial zoom to fit (more zoomed out)
-    setTimeout(() => {
-      const bounds = g.node().getBBox();
-      const fullWidth = bounds.width;
-      const fullHeight = bounds.height;
-      const midX = bounds.x + fullWidth / 2;
-      const midY = bounds.y + fullHeight / 2;
-      
-      if (fullWidth === 0 || fullHeight === 0) return;
-      
-      // Use 0.6 scale factor for more zoomed out view (was 0.8)
-      const scale = 0.6 / Math.max(fullWidth / width, fullHeight / height);
-      const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
-      
-      svg.transition()
-        .duration(750)
-        .call(
-          zoom.transform,
-          d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-        );
-    }, 100); // Small delay to let simulation stabilize
+    // Initial zoom to fit - ONLY ON FIRST RENDER (not on filter changes!)
+    if (!hasInitialZoom) {
+      hasInitialZoom = true;
+      setTimeout(() => {
+        const bounds = g.node().getBBox();
+        const fullWidth = bounds.width;
+        const fullHeight = bounds.height;
+        const midX = bounds.x + fullWidth / 2;
+        const midY = bounds.y + fullHeight / 2;
+        
+        if (fullWidth === 0 || fullHeight === 0) return;
+        
+        // Use 0.5 scale factor for better overview of flowchart
+        const scale = 0.5 / Math.max(fullWidth / width, fullHeight / height);
+        // Center properly with slight upward bias (+30px moves graph down in viewport = uses top space)
+        const translate = [width / 2 - scale * midX, height / 2 - scale * midY + 30];
+        
+        svg.transition()
+          .duration(750)
+          .call(
+            zoom.transform,
+            d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+          );
+      }, 100); // Faster delay for flowchart
+    }
   }
   
   onMount(() => {
@@ -735,7 +808,7 @@
     showSnapshots = true;
   }
   
-  // Re-center graph
+  // Re-center graph - BETTER for flowchart with BOTTOM PADDING
   function recenterGraph() {
     if (!window.graphSvg || !window.graphZoom || !window.graphG) return;
     
@@ -747,9 +820,10 @@
     
     if (fullWidth === 0 || fullHeight === 0) return;
     
-    // Use 0.6 scale factor for consistent zoomed out view
-    const scale = 0.6 / Math.max(fullWidth / width, fullHeight / height);
-    const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
+    // Use 0.5 scale factor for consistent flowchart view
+    const scale = 0.5 / Math.max(fullWidth / width, fullHeight / height);
+    // Center properly with slight upward bias (+30px moves graph down = uses top space)
+    const translate = [width / 2 - scale * midX, height / 2 - scale * midY + 30];
     
     window.graphSvg.transition()
       .duration(750)
@@ -779,11 +853,11 @@
     const fullNode = manifest.nodes[node.id];
     if (!fullNode || !fullNode.columns) return [];
     
-    return Object.values(fullNode.columns).slice(0, 5); // First 5 columns
+    return Object.values(fullNode.columns); // ALL columns for sidebar
   }
 </script>
 
-<div bind:this={containerElement} class="w-full h-full bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden flex flex-col">
+<div bind:this={containerElement} class="w-full h-full bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden flex flex-col min-h-0">
   <!-- Compact Header with Filters -->
   <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
     <!-- Title Row -->
@@ -947,15 +1021,15 @@
   </div>
   
   <!-- Graph Canvas with Sidebar -->
-  <div class="flex-1 relative flex overflow-hidden">
+  <div class="flex-1 relative flex overflow-hidden min-h-0">
     <!-- Main Graph -->
-    <div class="flex-1">
+    <div class="flex-1 min-h-0">
       <svg bind:this={svgContainer} class="w-full h-full"></svg>
     </div>
     
-    <!-- Details Sidebar - SCROLLABLE -->
+    <!-- Details Sidebar - RESPONSIVE (overlay on mobile, fixed on desktop) -->
     {#if selectedNode}
-      <div class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col max-h-full">
+      <div class="md:w-80 w-full md:relative fixed inset-0 md:inset-auto bg-white dark:bg-gray-800 md:border-l border-0 border-gray-200 dark:border-gray-700 flex flex-col h-full z-50 md:z-auto">
         <!-- Sidebar Header - FIXED -->
         <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between flex-shrink-0">
           <div class="flex-1 min-w-0">
@@ -988,8 +1062,8 @@
           </button>
         </div>
         
-        <!-- Sidebar Content - SCROLLABLE with max-height -->
-        <div class="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4" style="max-height: calc(100vh - 200px);">
+        <!-- Sidebar Content - SCROLLABLE with min-h-0 for flex -->
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
           <!-- Description -->
           {#if selectedNode.description}
             <div>
@@ -1054,11 +1128,6 @@
                     {/if}
                   </div>
                 {/each}
-                {#if getNodeColumns(selectedNode).length >= 5}
-                  <p class="text-xs text-gray-500 dark:text-gray-400 italic text-center">
-                    + more columns...
-                  </p>
-                {/if}
               </div>
             </div>
           {/if}
