@@ -413,20 +413,30 @@
             </svg>
           </button>
           
-          <!-- Logo: Document with data layers -->
+          <!-- Material Docs Logo: M shape with stacked layers -->
           <svg class="w-6 h-6 sm:w-8 sm:h-8" viewBox="0 0 100 100">
             <defs>
-              <linearGradient id="docGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="matGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" style="stop-color:#FF6B35;stop-opacity:1" />
                 <stop offset="100%" style="stop-color:#F7931E;stop-opacity:1" />
               </linearGradient>
+              <linearGradient id="matGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#F7931E;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#FFB74D;stop-opacity:1" />
+              </linearGradient>
             </defs>
-            <rect x="20" y="15" width="60" height="70" rx="5" fill="url(#docGrad)" />
-            <line x1="30" y1="30" x2="70" y2="30" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
-            <line x1="30" y1="42" x2="70" y2="42" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
-            <line x1="30" y1="54" x2="70" y2="54" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
-            <path d="M 35 60 L 35 75 L 40 68 L 45 75 L 50 68 L 55 75 L 55 60" 
-                  stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+            
+            <!-- Layer 3 (back, lightest) -->
+            <path d="M 20 65 L 20 75 L 30 65 L 40 75 L 50 55 L 60 75 L 70 65 L 80 75 L 80 65 L 70 55 L 60 65 L 50 45 L 40 65 L 30 55 Z" 
+                  fill="url(#matGrad2)" opacity="0.5"/>
+            
+            <!-- Layer 2 (middle) -->
+            <path d="M 20 50 L 20 60 L 30 50 L 40 60 L 50 40 L 60 60 L 70 50 L 80 60 L 80 50 L 70 40 L 60 50 L 50 30 L 40 50 L 30 40 Z" 
+                  fill="url(#matGrad1)" opacity="0.7"/>
+            
+            <!-- Layer 1 (front, darkest) -->
+            <path d="M 20 35 L 20 45 L 30 35 L 40 45 L 50 25 L 60 45 L 70 35 L 80 45 L 80 35 L 70 25 L 60 35 L 50 15 L 40 35 L 30 25 Z" 
+                  fill="url(#matGrad1)"/>
           </svg>
           <div class="hidden sm:block">
             <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Material Docs</h1>
