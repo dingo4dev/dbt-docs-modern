@@ -20,6 +20,12 @@
   let selectedDatabases = [];
   let allSchemas = [];
   let allDatabases = [];
+  let filtersExpanded = false;
+  
+  // UI state
+  let selectedNode = null;
+  let isFullscreen = false;
+  let containerElement;
   
   // Extract nodes and edges from manifest
   function buildGraph(manifest, focusModel = null) {
@@ -184,6 +190,11 @@
     
     svg.call(zoom);
     
+    // Store zoom for re-center function
+    window.graphZoom = zoom;
+    window.graphSvg = svg;
+    window.graphG = g;
+    
     // Create force simulation
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(links)
@@ -317,7 +328,11 @@
     // Click handler
     node.on('click', (event, d) => {
       event.stopPropagation();
-      onModelClick(d.id);
+      selectedNode = d;
+      // Also trigger the parent callback if it's a model
+      if (d.type === 'model') {
+        onModelClick(d.id);
+      }
     });
     
     // Hover effects
@@ -477,110 +492,179 @@
     showTests = false;
     showSnapshots = true;
   }
+  
+  // Re-center graph
+  function recenterGraph() {
+    if (!window.graphSvg || !window.graphZoom || !window.graphG) return;
+    
+    const bounds = window.graphG.node().getBBox();
+    const fullWidth = bounds.width;
+    const fullHeight = bounds.height;
+    const midX = bounds.x + fullWidth / 2;
+    const midY = bounds.y + fullHeight / 2;
+    
+    if (fullWidth === 0 || fullHeight === 0) return;
+    
+    const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
+    const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
+    
+    window.graphSvg.transition()
+      .duration(750)
+      .call(
+        window.graphZoom.transform,
+        d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+      );
+  }
+  
+  // Toggle fullscreen
+  function toggleFullscreen() {
+    if (!containerElement) return;
+    
+    if (!document.fullscreenElement) {
+      containerElement.requestFullscreen();
+      isFullscreen = true;
+    } else {
+      document.exitFullscreen();
+      isFullscreen = false;
+    }
+  }
+  
+  // Get columns for selected node
+  function getNodeColumns(node) {
+    if (!manifest || !manifest.nodes) return [];
+    
+    const fullNode = manifest.nodes[node.id];
+    if (!fullNode || !fullNode.columns) return [];
+    
+    return Object.values(fullNode.columns).slice(0, 5); // First 5 columns
+  }
 </script>
 
-<div class="w-full h-full bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden flex flex-col">
-  <!-- Header with Filters -->
-  <div class="p-4 border-b border-gray-200 dark:border-gray-700 space-y-4">
-    <!-- Title -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+<div bind:this={containerElement} class="w-full h-full bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden flex flex-col">
+  <!-- Compact Header with Filters -->
+  <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+    <!-- Title Row -->
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-3">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">
           {selectedModel ? 'Model Lineage' : 'Full DAG'}
         </h3>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-          {selectedModel ? 'Showing upstream and downstream dependencies' : 'All models and dependencies'}
-        </p>
+        
+        <!-- Resource Type Filters (Compact) -->
+        <div class="flex gap-1.5">
+          <button
+            on:click={() => showModels = !showModels}
+            class={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+              showModels
+                ? 'bg-orange-500 text-white shadow-md'
+                : 'bg-gray-200 text-gray-400 dark:bg-gray-700'
+            }`}
+            title="Models"
+          >
+            M
+          </button>
+          
+          <button
+            on:click={() => showSources = !showSources}
+            class={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+              showSources
+                ? 'bg-blue-500 text-white shadow-md'
+                : 'bg-gray-200 text-gray-400 dark:bg-gray-700'
+            }`}
+            title="Sources"
+          >
+            S
+          </button>
+          
+          <button
+            on:click={() => showSeeds = !showSeeds}
+            class={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+              showSeeds
+                ? 'bg-green-500 text-white shadow-md'
+                : 'bg-gray-200 text-gray-400 dark:bg-gray-700'
+            }`}
+            title="Seeds"
+          >
+            D
+          </button>
+          
+          <button
+            on:click={() => showSnapshots = !showSnapshots}
+            class={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+              showSnapshots
+                ? 'bg-purple-500 text-white shadow-md'
+                : 'bg-gray-200 text-gray-400 dark:bg-gray-700'
+            }`}
+            title="Snapshots"
+          >
+            P
+          </button>
+          
+          <button
+            on:click={() => showTests = !showTests}
+            class={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+              showTests
+                ? 'bg-red-500 text-white shadow-md'
+                : 'bg-gray-200 text-gray-400 dark:bg-gray-700'
+            }`}
+            title="Tests (hidden by default)"
+          >
+            T
+          </button>
+        </div>
       </div>
       
-      <button
-        on:click={clearFilters}
-        class="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 font-medium"
-      >
-        Reset Filters
-      </button>
-    </div>
-    
-    <!-- Resource Type Filters -->
-    <div>
-      <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Resource Types:</div>
-      <div class="flex flex-wrap gap-2">
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2">
+        {#if allSchemas.length > 1 || allDatabases.length > 1}
+          <button
+            on:click={() => filtersExpanded = !filtersExpanded}
+            class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            {filtersExpanded ? '▲' : '▼'} Filters
+          </button>
+        {/if}
+        
         <button
-          on:click={() => showModels = !showModels}
-          class={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            showModels
-              ? 'bg-orange-500 text-white'
-              : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-500'
-          }`}
+          on:click={recenterGraph}
+          class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          title="Re-center graph"
         >
-          <div class="w-2 h-2 rounded-full bg-current mr-1.5"></div>
-          Models
+          ⊙ Center
         </button>
         
         <button
-          on:click={() => showSources = !showSources}
-          class={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            showSources
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-500'
-          }`}
+          on:click={toggleFullscreen}
+          class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          title="Toggle fullscreen"
         >
-          <div class="w-2 h-2 rounded-full bg-current mr-1.5"></div>
-          Sources
+          ⛶ {isFullscreen ? 'Exit' : 'Full'}
         </button>
         
         <button
-          on:click={() => showSeeds = !showSeeds}
-          class={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            showSeeds
-              ? 'bg-green-500 text-white'
-              : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-500'
-          }`}
+          on:click={clearFilters}
+          class="px-3 py-1.5 text-xs font-medium text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300"
+          title="Reset all filters"
         >
-          <div class="w-2 h-2 rounded-full bg-current mr-1.5"></div>
-          Seeds
-        </button>
-        
-        <button
-          on:click={() => showSnapshots = !showSnapshots}
-          class={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            showSnapshots
-              ? 'bg-purple-500 text-white'
-              : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-500'
-          }`}
-        >
-          <div class="w-2 h-2 rounded-full bg-current mr-1.5"></div>
-          Snapshots
-        </button>
-        
-        <button
-          on:click={() => showTests = !showTests}
-          class={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-            showTests
-              ? 'bg-red-500 text-white'
-              : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-500'
-          }`}
-        >
-          <div class="w-2 h-2 rounded-full bg-current mr-1.5"></div>
-          Tests {#if !showTests}<span class="ml-1 opacity-60">(hidden)</span>{/if}
+          Reset
         </button>
       </div>
     </div>
     
-    <!-- Schema/Database Filters -->
-    {#if allSchemas.length > 1 || allDatabases.length > 1}
-      <div class="grid grid-cols-2 gap-4">
+    <!-- Expandable Schema/Database Filters -->
+    {#if filtersExpanded && (allSchemas.length > 1 || allDatabases.length > 1)}
+      <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-2 gap-3 text-xs">
         <!-- Schema Filter -->
         {#if allSchemas.length > 1}
           <div>
-            <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Schemas ({selectedSchemas.length > 0 ? selectedSchemas.length : 'all'}):
+            <div class="font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Schemas:
             </div>
-            <div class="flex flex-wrap gap-1.5">
+            <div class="flex flex-wrap gap-1">
               {#each allSchemas as schema}
                 <button
                   on:click={() => toggleSchema(schema)}
-                  class={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  class={`px-2 py-0.5 rounded text-xs transition-colors ${
                     selectedSchemas.length === 0 || selectedSchemas.includes(schema)
                       ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
                       : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'
@@ -596,14 +680,14 @@
         <!-- Database Filter -->
         {#if allDatabases.length > 1}
           <div>
-            <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Databases ({selectedDatabases.length > 0 ? selectedDatabases.length : 'all'}):
+            <div class="font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Databases:
             </div>
-            <div class="flex flex-wrap gap-1.5">
+            <div class="flex flex-wrap gap-1">
               {#each allDatabases as db}
                 <button
                   on:click={() => toggleDatabase(db)}
-                  class={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  class={`px-2 py-0.5 rounded text-xs transition-colors ${
                     selectedDatabases.length === 0 || selectedDatabases.includes(db)
                       ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
                       : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'
@@ -619,16 +703,150 @@
     {/if}
   </div>
   
-  <!-- Graph Canvas -->
-  <div class="flex-1 relative" style="height: {height}px;">
-    <svg bind:this={svgContainer} class="w-full h-full"></svg>
-    
-    <div class="absolute bottom-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 text-xs text-gray-600 dark:text-gray-400">
-      <div class="font-semibold mb-2">Controls:</div>
-      <div>🖱️ Drag nodes to reposition</div>
-      <div>🔍 Scroll to zoom</div>
-      <div>👆 Click nodes to view details</div>
-      <div>✨ Animated arrows show data flow</div>
+  <!-- Graph Canvas with Sidebar -->
+  <div class="flex-1 relative flex overflow-hidden">
+    <!-- Main Graph -->
+    <div class="flex-1">
+      <svg bind:this={svgContainer} class="w-full h-full"></svg>
     </div>
+    
+    <!-- Details Sidebar -->
+    {#if selectedNode}
+      <div class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <!-- Sidebar Header -->
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-2">
+              <div class={`w-3 h-3 rounded-full ${
+                selectedNode.type === 'model' ? 'bg-orange-500' :
+                selectedNode.type === 'source' ? 'bg-blue-500' :
+                selectedNode.type === 'seed' ? 'bg-green-500' :
+                selectedNode.type === 'snapshot' ? 'bg-purple-500' :
+                'bg-red-500'
+              }`}></div>
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                {selectedNode.type}
+              </span>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white truncate">
+              {selectedNode.name}
+            </h3>
+            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+              {selectedNode.schema}.{selectedNode.name}
+            </p>
+          </div>
+          <button
+            on:click={() => selectedNode = null}
+            class="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+          >
+            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Sidebar Content -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <!-- Description -->
+          {#if selectedNode.description}
+            <div>
+              <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                Description
+              </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                {selectedNode.description}
+              </p>
+            </div>
+          {/if}
+          
+          <!-- Materialization -->
+          {#if selectedNode.type === 'model'}
+            <div>
+              <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                Materialization
+              </div>
+              <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                {selectedNode.materialization}
+              </span>
+            </div>
+          {/if}
+          
+          <!-- Tags -->
+          {#if selectedNode.tags && selectedNode.tags.length > 0}
+            <div>
+              <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                Tags
+              </div>
+              <div class="flex flex-wrap gap-1">
+                {#each selectedNode.tags as tag}
+                  <span class="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    {tag}
+                  </span>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Columns -->
+          {#if getNodeColumns(selectedNode).length > 0}
+            <div>
+              <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase mb-2">
+                Columns
+              </div>
+              <div class="space-y-2">
+                {#each getNodeColumns(selectedNode) as column}
+                  <div class="bg-gray-50 dark:bg-gray-900/50 rounded p-2">
+                    <div class="flex items-start justify-between mb-1">
+                      <span class="text-sm font-medium text-gray-900 dark:text-white">
+                        {column.name}
+                      </span>
+                      <code class="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                        {column.type || column.data_type || 'unknown'}
+                      </code>
+                    </div>
+                    {#if column.description}
+                      <p class="text-xs text-gray-600 dark:text-gray-400">
+                        {column.description}
+                      </p>
+                    {/if}
+                  </div>
+                {/each}
+                {#if getNodeColumns(selectedNode).length >= 5}
+                  <p class="text-xs text-gray-500 dark:text-gray-400 italic text-center">
+                    + more columns...
+                  </p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+        
+        <!-- Sidebar Footer -->
+        {#if selectedNode.type === 'model'}
+          <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+            <button
+              on:click={() => {
+                onModelClick(selectedNode.id);
+                selectedNode = null;
+              }}
+              class="w-full px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
+            >
+              View Full Details →
+            </button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+    
+    <!-- Help Tooltip -->
+    {#if !selectedNode}
+      <div class="absolute bottom-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 text-xs text-gray-600 dark:text-gray-400">
+        <div class="font-semibold mb-2">Controls:</div>
+        <div>🖱️ Drag nodes to reposition</div>
+        <div>🔍 Scroll to zoom</div>
+        <div>👆 Click nodes for details</div>
+        <div>✨ Animated arrows show data flow</div>
+      </div>
+    {/if}
   </div>
 </div>
