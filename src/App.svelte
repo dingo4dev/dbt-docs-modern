@@ -12,6 +12,7 @@
   let view = 'overview'; // 'overview' or 'detail'
   let selectedTags = []; // For tag filtering
   let selectedMaterializations = []; // For materialization filtering
+  let copiedCode = false; // For copy feedback
   let groupBy = 'none'; // 'none', 'schema', 'database'
   let sortBy = 'name'; // 'name', 'updated', 'dependencies'
   let showLineage = false; // Show lineage graph
@@ -388,6 +389,22 @@
   function closeLineage() {
     showLineage = false;
     lineageModel = null;
+  }
+
+  // Copy SQL to clipboard
+  async function copySQLCode() {
+    const code = selectedNode.compiled_code || selectedNode.raw_code;
+    if (!code) return;
+    
+    try {
+      await navigator.clipboard.writeText(code);
+      copiedCode = true;
+      setTimeout(() => {
+        copiedCode = false;
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   }
 </script>
 
@@ -1080,8 +1097,25 @@
           <!-- SQL -->
           {#if selectedNode.raw_code || selectedNode.compiled_code}
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-              <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+              <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">SQL</h2>
+                <button
+                  on:click={copySQLCode}
+                  class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors {copiedCode ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}"
+                  title="Copy SQL to clipboard"
+                >
+                  {#if copiedCode}
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Copied!
+                  {:else}
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    Copy
+                  {/if}
+                </button>
               </div>
               <div class="p-3 sm:p-4 lg:p-6">
                 <pre class="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 sm:p-4 overflow-x-auto text-xs sm:text-sm"><code class="text-gray-800 dark:text-gray-200">{selectedNode.compiled_code || selectedNode.raw_code}</code></pre>
