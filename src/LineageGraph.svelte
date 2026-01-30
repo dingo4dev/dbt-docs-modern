@@ -203,15 +203,16 @@
     window.graphSvg = svg;
     window.graphG = g;
     
-    // Create force simulation with adjusted parameters for table layout
+    // Create force simulation with LEFT-TO-RIGHT layout (horizontal)
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(links)
         .id(d => d.id)
-        .distance(200)) // Increased distance for table spacing
+        .distance(250)) // Increased for horizontal spacing
       .force('charge', d3.forceManyBody()
-        .strength(-500)) // Stronger repulsion
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(80)); // Larger collision radius for tables
+        .strength(-800)) // Stronger repulsion for horizontal spread
+      .force('x', d3.forceX(width / 2).strength(0.05)) // Weak horizontal centering
+      .force('y', d3.forceY(height / 2).strength(0.3)) // Stronger vertical centering (keep in rows)
+      .force('collision', d3.forceCollide().radius(90)); // Larger collision radius for horizontal layout
     
     // Add arrow markers for directed edges with animation
     const defs = svg.append('defs');
@@ -311,12 +312,12 @@
     
     // Node background (table card)
     node.append('rect')
-      .attr('width', 140)
+      .attr('width', 160) // Increased width for badges
       .attr('height', d => {
         const cols = getNodeColumnsForGraph(d);
         return 40 + (cols.length * 24); // Header 40px + 24px per column
       })
-      .attr('x', -70)
+      .attr('x', -80)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
         return -(40 + (cols.length * 24)) / 2;
@@ -329,9 +330,9 @@
     
     // Table header (node name + type)
     node.append('rect')
-      .attr('width', 140)
+      .attr('width', 160)
       .attr('height', 32)
-      .attr('x', -70)
+      .attr('x', -80)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
         return -(40 + (cols.length * 24)) / 2;
@@ -340,13 +341,83 @@
       .attr('fill', d => getNodeColor(d))
       .attr('class', 'transition-all');
     
-    // Node name (header text)
+    // LEFT TOP BADGE: Materialization type (for models)
+    node.filter(d => d.type === 'model').append('g')
+      .attr('transform', d => {
+        const cols = getNodeColumnsForGraph(d);
+        const topY = -(40 + (cols.length * 24)) / 2;
+        return `translate(-75, ${topY + 5})`;
+      })
+      .call(g => {
+        // Badge background
+        g.append('rect')
+          .attr('width', d => {
+            const text = d.materialization || 'view';
+            return text.length * 5 + 8;
+          })
+          .attr('height', 14)
+          .attr('rx', 3)
+          .attr('fill', 'rgba(255,255,255,0.25)');
+        
+        // Badge text
+        g.append('text')
+          .text(d => (d.materialization || 'view').substring(0, 4).toUpperCase())
+          .attr('x', 4)
+          .attr('y', 10)
+          .attr('class', 'fill-white text-xs font-bold pointer-events-none')
+          .style('font-size', '9px');
+      });
+    
+    // RIGHT TOP BADGE: Resource type
+    node.append('g')
+      .attr('transform', d => {
+        const cols = getNodeColumnsForGraph(d);
+        const topY = -(40 + (cols.length * 24)) / 2;
+        return `translate(45, ${topY + 5})`;
+      })
+      .call(g => {
+        // Badge background
+        g.append('rect')
+          .attr('width', d => {
+            const typeLabels = {
+              model: 'MODEL',
+              source: 'SOURCE',
+              seed: 'SEED',
+              snapshot: 'SNAP',
+              test: 'TEST'
+            };
+            const text = typeLabels[d.type] || d.type.toUpperCase();
+            return text.length * 5.5 + 8;
+          })
+          .attr('height', 14)
+          .attr('rx', 3)
+          .attr('fill', 'rgba(255,255,255,0.3)');
+        
+        // Badge text
+        g.append('text')
+          .text(d => {
+            const typeLabels = {
+              model: 'MODEL',
+              source: 'SOURCE',
+              seed: 'SEED',
+              snapshot: 'SNAP',
+              test: 'TEST'
+            };
+            return typeLabels[d.type] || d.type.toUpperCase();
+          })
+          .attr('x', 4)
+          .attr('y', 10)
+          .attr('class', 'fill-white text-xs font-bold pointer-events-none')
+          .style('font-size', '9px');
+      });
+    
+    // Node name (header text, centered)
     node.append('text')
-      .text(d => d.name.length > 16 ? d.name.substring(0, 14) + '..' : d.name)
+      .text(d => d.name.length > 18 ? d.name.substring(0, 16) + '..' : d.name)
       .attr('x', 0)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(40 + (cols.length * 24)) / 2 + 20;
+        return -(40 + (cols.length * 24)) / 2 + 24;
       })
       .attr('text-anchor', 'middle')
       .attr('class', 'fill-white text-sm font-bold pointer-events-none');
@@ -362,16 +433,16 @@
         
         // Column name
         nodeGroup.append('text')
-          .text(col.name.length > 12 ? col.name.substring(0, 10) + '..' : col.name)
-          .attr('x', -65)
+          .text(col.name.length > 14 ? col.name.substring(0, 12) + '..' : col.name)
+          .attr('x', -75)
           .attr('y', y + 8)
           .attr('text-anchor', 'start')
           .attr('class', 'fill-gray-700 dark:fill-gray-300 text-xs pointer-events-none');
         
         // Column type
         nodeGroup.append('text')
-          .text((col.type || col.data_type || 'str').substring(0, 8))
-          .attr('x', 65)
+          .text((col.type || col.data_type || 'str').substring(0, 10))
+          .attr('x', 75)
           .attr('y', y + 8)
           .attr('text-anchor', 'end')
           .attr('class', 'fill-gray-500 dark:fill-gray-400 text-xs font-mono pointer-events-none');
@@ -379,8 +450,8 @@
         // Separator line
         if (i < cols.length - 1) {
           nodeGroup.append('line')
-            .attr('x1', -65)
-            .attr('x2', 65)
+            .attr('x1', -75)
+            .attr('x2', 75)
             .attr('y1', y + 12)
             .attr('y2', y + 12)
             .attr('stroke', '#e5e7eb')
@@ -405,14 +476,11 @@
       }
     });
     
-    // Click handler
+    // Click handler - show in sidebar, don't navigate
     node.on('click', (event, d) => {
       event.stopPropagation();
       selectedNode = d;
-      // Also trigger the parent callback if it's a model
-      if (d.type === 'model') {
-        onModelClick(d.id);
-      }
+      // Don't trigger navigation, just show sidebar
     });
     
     // Hover effects
@@ -907,20 +975,15 @@
           {/if}
         </div>
         
-        <!-- Sidebar Footer -->
-        {#if selectedNode.type === 'model'}
-          <div class="p-4 border-t border-gray-200 dark:border-gray-700">
-            <button
-              on:click={() => {
-                onModelClick(selectedNode.id);
-                selectedNode = null;
-              }}
-              class="w-full px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
-            >
-              View Full Details →
-            </button>
-          </div>
-        {/if}
+        <!-- Sidebar Footer with action button -->
+        <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+          <button
+            on:click={() => selectedNode = null}
+            class="w-full px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+          >
+            Close Details
+          </button>
+        </div>
       </div>
     {/if}
     
