@@ -85,7 +85,7 @@
     return model.depends_on.nodes
       .map(nodeId => {
         const node = manifest.nodes[nodeId] || manifest.sources[nodeId];
-        return node ? { id: nodeId, name: node.name, type: node.resource_type } : null;
+        return node ? { id: nodeId, name: node.name, type: node.resource_type, node: node } : null;
       })
       .filter(Boolean);
   }
@@ -400,13 +400,29 @@
               </div>
               <div class="p-6 space-y-2">
                 {#each getUpstreamDeps(selectedNode) as dep}
-                  <div class="flex items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50">
-                    <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-                    </svg>
-                    <span class="text-sm text-gray-700 dark:text-gray-300">{dep.name}</span>
-                    <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{dep.type}</span>
-                  </div>
+                  {#if dep.type === 'model'}
+                    <button
+                      on:click={() => showModelDetail(dep.node)}
+                      class="w-full flex items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                      </svg>
+                      <span class="text-sm text-gray-700 dark:text-gray-300">{dep.name}</span>
+                      <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{dep.type}</span>
+                      <svg class="w-4 h-4 text-gray-400 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </button>
+                  {:else}
+                    <div class="flex items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50">
+                      <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                      </svg>
+                      <span class="text-sm text-gray-700 dark:text-gray-300">{dep.name}</span>
+                      <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{dep.type}</span>
+                    </div>
+                  {/if}
                 {/each}
               </div>
             </div>
