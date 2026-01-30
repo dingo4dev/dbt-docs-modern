@@ -13,6 +13,8 @@
   let selectedMaterializations = []; // For materialization filtering
   let groupBy = 'none'; // 'none', 'schema', 'database'
   let sortBy = 'name'; // 'name', 'updated', 'dependencies'
+  let showLineage = false; // Show lineage graph
+  let lineageModel = null; // Model for lineage view
 
   // Load manifest and catalog
   onMount(async () => {
@@ -201,6 +203,26 @@
       test.depends_on && test.depends_on.nodes && 
       test.depends_on.nodes.includes(model.unique_id)
     );
+  }
+
+  // Get downstream dependencies (models that depend on this one)
+  function getDownstreamDeps(model) {
+    return models.filter(m => 
+      m.depends_on && m.depends_on.nodes && 
+      m.depends_on.nodes.includes(model.unique_id)
+    ).map(m => ({ id: m.unique_id, name: m.name, type: 'model', node: m }));
+  }
+
+  // Show lineage graph
+  function showLineageGraph(model) {
+    lineageModel = model;
+    showLineage = true;
+  }
+
+  // Close lineage
+  function closeLineage() {
+    showLineage = false;
+    lineageModel = null;
   }
 </script>
 
@@ -522,7 +544,7 @@
       <!-- Model Header -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
         <div class="flex items-start justify-between">
-          <div>
+          <div class="flex-1">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{selectedNode.name}</h1>
             {#if selectedNode.description}
               <p class="text-lg text-gray-600 dark:text-gray-300 mb-4">{selectedNode.description}</p>
@@ -553,6 +575,17 @@
                 {/each}
               {/if}
             </div>
+          </div>
+          <div>
+            <button
+              on:click={() => showLineageGraph(selectedNode)}
+              class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
+            >
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 12h16m-7 5h7"/>
+              </svg>
+              View Lineage
+            </button>
           </div>
         </div>
       </div>
@@ -696,6 +729,126 @@
       </div>
     </div>
     {/if}
+  {/if}
+
+  <!-- Lineage Modal -->
+  {#if showLineage && lineageModel}
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" on:click={closeLineage}>
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden" on:click|stopPropagation>
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">
+            Lineage: {lineageModel.name}
+          </h2>
+          <button
+            on:click={closeLineage}
+            class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Content -->
+        <div class="p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
+          <div class="flex items-start justify-center space-x-12">
+            <!-- Upstream (Left) -->
+            <div class="flex-1">
+              <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 text-center">
+                Upstream Dependencies
+              </h3>
+              {#if getUpstreamDeps(lineageModel).length > 0}
+                <div class="space-y-2">
+                  {#each getUpstreamDeps(lineageModel) as dep}
+                    <div class="flex items-center justify-end">
+                      <button
+                        on:click={() => {
+                          if (dep.type === 'model') {
+                            showModelDetail(dep.node);
+                            closeLineage();
+                          }
+                        }}
+                        class={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          dep.type === 'model'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                            : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        {dep.name}
+                        <span class="ml-2 text-xs opacity-75">{dep.type}</span>
+                      </button>
+                      <svg class="w-6 h-6 text-gray-400 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                      </svg>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="text-sm text-gray-500 dark:text-gray-400 text-center italic">No upstream dependencies</p>
+              {/if}
+            </div>
+
+            <!-- Current Model (Center) -->
+            <div class="flex items-center">
+              <div class="bg-orange-500 text-white px-6 py-4 rounded-lg shadow-lg">
+                <div class="text-sm font-semibold mb-1 opacity-75">Current Model</div>
+                <div class="text-lg font-bold">{lineageModel.name}</div>
+                <div class="text-xs opacity-75 mt-1">{lineageModel.schema}</div>
+              </div>
+            </div>
+
+            <!-- Downstream (Right) -->
+            <div class="flex-1">
+              <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 text-center">
+                Downstream Models
+              </h3>
+              {#if getDownstreamDeps(lineageModel).length > 0}
+                <div class="space-y-2">
+                  {#each getDownstreamDeps(lineageModel) as dep}
+                    <div class="flex items-center">
+                      <svg class="w-6 h-6 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                      </svg>
+                      <button
+                        on:click={() => {
+                          showModelDetail(dep.node);
+                          closeLineage();
+                        }}
+                        class="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                      >
+                        {dep.name}
+                        <span class="ml-2 text-xs opacity-75">{dep.type}</span>
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="text-sm text-gray-500 dark:text-gray-400 text-center italic">No downstream models</p>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div class="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{getUpstreamDeps(lineageModel).length}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">Upstream</div>
+              </div>
+              <div>
+                <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">1</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">Current</div>
+              </div>
+              <div>
+                <div class="text-2xl font-bold text-green-600 dark:text-green-400">{getDownstreamDeps(lineageModel).length}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">Downstream</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   {/if}
 </main>
 
