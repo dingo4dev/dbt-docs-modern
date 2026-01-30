@@ -11,6 +11,7 @@
   let view = 'overview'; // 'overview' or 'detail'
   let selectedTags = []; // For tag filtering
   let selectedMaterializations = []; // For materialization filtering
+  let groupBy = 'none'; // 'none', 'schema', 'database'
 
   // Load manifest and catalog
   onMount(async () => {
@@ -74,6 +75,28 @@
     
     return matchesSearch && matchesTags && matchesMat;
   });
+
+  // Group filtered models
+  $: groupedModels = (() => {
+    if (groupBy === 'none') {
+      return { '': filteredModels };
+    } else if (groupBy === 'schema') {
+      return filteredModels.reduce((groups, model) => {
+        const key = model.schema || 'unknown';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(model);
+        return groups;
+      }, {});
+    } else if (groupBy === 'database') {
+      return filteredModels.reduce((groups, model) => {
+        const key = model.database || 'unknown';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(model);
+        return groups;
+      }, {});
+    }
+    return { '': filteredModels };
+  })();
 
   // Toggle dark mode
   function toggleDarkMode() {
@@ -384,39 +407,63 @@
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Models</h2>
-            <span class="text-sm text-gray-500 dark:text-gray-400">
-              {filteredModels.length} of {models.length}
-            </span>
+            <div class="flex items-center space-x-4">
+              <span class="text-sm text-gray-500 dark:text-gray-400">
+                {filteredModels.length} of {models.length}
+              </span>
+              <div class="flex items-center space-x-2">
+                <span class="text-xs text-gray-500 dark:text-gray-400">Group by:</span>
+                <select
+                  bind:value={groupBy}
+                  class="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="none">None</option>
+                  <option value="schema">Schema</option>
+                  <option value="database">Database</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
-          {#each filteredModels.slice(0, 20) as model}
-            <button
-              on:click={() => showModelDetail(model)}
-              class="w-full px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <h3 class="text-sm font-medium text-gray-900 dark:text-white">{model.name}</h3>
-                  {#if model.description}
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{model.description}</p>
-                  {/if}
-                  <div class="flex items-center space-x-4 mt-2">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                      {model.schema}
-                    </span>
-                    {#if model.config?.materialized}
-                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                        {model.config.materialized}
-                      </span>
-                    {/if}
-                  </div>
-                </div>
-                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
+          {#each Object.keys(groupedModels).sort() as groupKey}
+            {#if groupBy !== 'none'}
+              <div class="px-6 py-3 bg-gray-50 dark:bg-gray-900/50">
+                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  {groupKey} ({groupedModels[groupKey].length})
+                </h3>
               </div>
-            </button>
+            {/if}
+            {#each (groupBy === 'none' ? groupedModels[groupKey].slice(0, 50) : groupedModels[groupKey]) as model}
+              <button
+                on:click={() => showModelDetail(model)}
+                class="w-full px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex-1">
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-white">{model.name}</h3>
+                    {#if model.description}
+                      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{model.description}</p>
+                    {/if}
+                    <div class="flex items-center space-x-4 mt-2">
+                      {#if groupBy === 'none'}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                          {model.schema}
+                        </span>
+                      {/if}
+                      {#if model.config?.materialized}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                          {model.config.materialized}
+                        </span>
+                      {/if}
+                    </div>
+                  </div>
+                  <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </div>
+              </button>
+            {/each}
           {/each}
           {#if filteredModels.length === 0}
             <div class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
