@@ -12,6 +12,7 @@
   let selectedTags = []; // For tag filtering
   let selectedMaterializations = []; // For materialization filtering
   let groupBy = 'none'; // 'none', 'schema', 'database'
+  let sortBy = 'name'; // 'name', 'updated', 'dependencies'
 
   // Load manifest and catalog
   onMount(async () => {
@@ -78,24 +79,44 @@
 
   // Group filtered models
   $: groupedModels = (() => {
+    // First sort the filtered models
+    let sorted = [...filteredModels];
+    
+    if (sortBy === 'name') {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === 'updated') {
+      sorted.sort((a, b) => {
+        const aTime = a.build_time || 0;
+        const bTime = b.build_time || 0;
+        return bTime - aTime; // Most recent first
+      });
+    } else if (sortBy === 'dependencies') {
+      sorted.sort((a, b) => {
+        const aDeps = a.depends_on?.nodes?.length || 0;
+        const bDeps = b.depends_on?.nodes?.length || 0;
+        return bDeps - aDeps; // Most dependencies first
+      });
+    }
+    
+    // Then group
     if (groupBy === 'none') {
-      return { '': filteredModels };
+      return { '': sorted };
     } else if (groupBy === 'schema') {
-      return filteredModels.reduce((groups, model) => {
+      return sorted.reduce((groups, model) => {
         const key = model.schema || 'unknown';
         if (!groups[key]) groups[key] = [];
         groups[key].push(model);
         return groups;
       }, {});
     } else if (groupBy === 'database') {
-      return filteredModels.reduce((groups, model) => {
+      return sorted.reduce((groups, model) => {
         const key = model.database || 'unknown';
         if (!groups[key]) groups[key] = [];
         groups[key].push(model);
         return groups;
       }, {});
     }
-    return { '': filteredModels };
+    return { '': sorted };
   })();
 
   // Toggle dark mode
@@ -412,7 +433,18 @@
                 {filteredModels.length} of {models.length}
               </span>
               <div class="flex items-center space-x-2">
-                <span class="text-xs text-gray-500 dark:text-gray-400">Group by:</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">Sort:</span>
+                <select
+                  bind:value={sortBy}
+                  class="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="name">Name</option>
+                  <option value="updated">Recently Updated</option>
+                  <option value="dependencies">Dependencies</option>
+                </select>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span class="text-xs text-gray-500 dark:text-gray-400">Group:</span>
                 <select
                   bind:value={groupBy}
                   class="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
