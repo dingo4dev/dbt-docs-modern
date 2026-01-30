@@ -735,8 +735,8 @@
         
         if (fullWidth === 0 || fullHeight === 0) return;
         
-        // Use 0.5 scale factor for better overview of flowchart
-        const scale = 0.5 / Math.max(fullWidth / width, fullHeight / height);
+        // Use 0.8 scale factor to show ALL elements (higher = more zoomed out for small containers)
+        const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
         // Center properly with slight upward bias (+30px moves graph down in viewport = uses top space)
         const translate = [width / 2 - scale * midX, height / 2 - scale * midY + 30];
         
@@ -751,31 +751,51 @@
   }
   
   onMount(() => {
+    let resizeTimeout;
+    
     const resizeObserver = new ResizeObserver(entries => {
-      width = entries[0].contentRect.width;
-      renderGraph();
+      const newWidth = entries[0].contentRect.width;
+      
+      // Only re-render if width actually changed significantly (>10px)
+      if (Math.abs(newWidth - width) < 10) return;
+      
+      // Debounce to avoid multiple rapid re-renders
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        width = newWidth;
+        renderGraph();
+      }, 100);
     });
     
     resizeObserver.observe(svgContainer.parentElement);
     
-    return () => resizeObserver.disconnect();
+    return () => {
+      clearTimeout(resizeTimeout);
+      resizeObserver.disconnect();
+    };
   });
   
   // Re-render when manifest or selectedModel changes
   $: if (manifest && svgContainer) {
+    console.log('Render: manifest changed');
     renderGraph();
   }
   
   $: if (selectedModel !== null && svgContainer) {
+    console.log('Render: selectedModel changed');
     renderGraph();
   }
   
-  // Re-render when filters change
-  $: if (svgContainer && (showModels || showSources || showSeeds || showTests || showSnapshots)) {
+  // Re-render when filters change (NOT on every access, only on actual change)
+  $: filterState = [showModels, showSources, showSeeds, showTests, showSnapshots].join(',');
+  $: if (svgContainer && filterState) {
+    console.log('Render: filters changed');
     renderGraph();
   }
   
-  $: if (svgContainer && (selectedSchemas || selectedDatabases)) {
+  $: schemaState = selectedSchemas.join(',') + '|' + selectedDatabases.join(',');
+  $: if (svgContainer && schemaState) {
+    console.log('Render: schema filters changed');
     renderGraph();
   }
   
@@ -806,6 +826,8 @@
     showSeeds = true;
     showTests = false;
     showSnapshots = true;
+    // Re-render graph after clearing filters
+    renderGraph();
   }
   
   // Re-center graph - BETTER for flowchart with BOTTOM PADDING
@@ -820,8 +842,8 @@
     
     if (fullWidth === 0 || fullHeight === 0) return;
     
-    // Use 0.5 scale factor for consistent flowchart view
-    const scale = 0.5 / Math.max(fullWidth / width, fullHeight / height);
+    // Use 0.4 scale factor for good overview when clicking Center button
+    const scale = 0.4 / Math.max(fullWidth / width, fullHeight / height);
     // Center properly with slight upward bias (+30px moves graph down = uses top space)
     const translate = [width / 2 - scale * midX, height / 2 - scale * midY + 30];
     
@@ -1021,15 +1043,15 @@
   </div>
   
   <!-- Graph Canvas with Sidebar -->
-  <div class="flex-1 relative flex overflow-hidden min-h-0">
-    <!-- Main Graph -->
-    <div class="flex-1 min-h-0">
+  <div class="flex-1 relative overflow-hidden min-h-0">
+    <!-- Main Graph - FULL WIDTH (no flex) -->
+    <div class="w-full h-full">
       <svg bind:this={svgContainer} class="w-full h-full"></svg>
     </div>
     
-    <!-- Details Sidebar - RESPONSIVE (overlay on mobile, fixed on desktop) -->
+    <!-- Details Sidebar - OVERLAY (absolute positioned, doesn't affect canvas) -->
     {#if selectedNode}
-      <div class="md:w-80 w-full md:relative fixed inset-0 md:inset-auto bg-white dark:bg-gray-800 md:border-l border-0 border-gray-200 dark:border-gray-700 flex flex-col h-full z-50 md:z-auto">
+      <div class="absolute top-0 right-0 w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-full shadow-xl z-50">
         <!-- Sidebar Header - FIXED -->
         <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between flex-shrink-0">
           <div class="flex-1 min-w-0">
