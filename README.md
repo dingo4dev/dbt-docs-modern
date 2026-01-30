@@ -59,6 +59,13 @@ Place `index.html`, `manifest.json`, and `catalog.json` in the same directory an
 - **Stats Dashboard** - Quick overview of models, sources, tests
 - **Model Explorer** - Browse and search all models
 - **Model Details** - Click any model to see SQL, columns, tests, dependencies
+- **Interactive Lineage Graph** - D3.js-powered DAG visualization
+  * Zoom/pan canvas
+  * Drag nodes to reposition
+  * Click nodes to navigate
+  * Hover to highlight connections
+  * View full DAG or focused lineage
+  * OpenLineage compatible structure
 - **Clickable Dependencies** - Navigate between models via dependency links
 - **Tag Filtering** - Filter models by tags (multi-select)
 - **Materialization Filtering** - Filter by type (view, table, incremental, etc.)
@@ -68,17 +75,18 @@ Place `index.html`, `manifest.json`, and `catalog.json` in the same directory an
 
 ## Coming Soon
 
-- 📈 **Enhanced Lineage Graph** - Interactive DAG visualization with D3.js
-- 🔗 **Dependency Tree** - Visual dependencies graph
-- 💾 **Export** - Download documentation as PDF
 - 📊 **Test Results** - Live test run status and history
+- 💾 **Export** - Download documentation as PDF
+- 🎨 **Layout Options** - Hierarchical, circular, tree layouts for DAG
 - 🔍 **Column-level Lineage** - Track data flow at column level
+- 🔗 **OpenLineage API Integration** - Real-time lineage updates
 
 ## Tech Stack
 
 - **Svelte 4** - Reactive UI framework (stable)
 - **Vite 5** - Build tool
-- **Tailwind CSS 4** - Utility-first CSS
+- **Tailwind CSS 3** - Utility-first CSS (stable)
+- **D3.js v7** - Interactive data visualization & graph layouts
 - **vite-plugin-singlefile** - Bundle everything into one HTML
 
 ## Why Svelte 4?
