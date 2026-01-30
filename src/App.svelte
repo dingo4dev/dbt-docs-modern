@@ -75,7 +75,7 @@
         </div>
         
         <button 
-          on:click={toggleDarkMode}
+          onclick={toggleDarkMode}
           class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
         >
           {#if darkMode}
