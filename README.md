@@ -59,17 +59,20 @@ Place `index.html`, `manifest.json`, and `catalog.json` in the same directory an
 - **Stats Dashboard** - Quick overview of models, sources, tests
 - **Model Explorer** - Browse and search all models
 - **Model Details** - Click any model to see SQL, columns, tests, dependencies
+- **Clickable Dependencies** - Navigate between models via dependency links
+- **Tag Filtering** - Filter models by tags (multi-select)
+- **Materialization Filtering** - Filter by type (view, table, incremental, etc.)
 - **Dark Mode** - Toggle between light and dark themes
 - **Responsive Design** - Mobile-friendly layout
 - **Fast Search** - Real-time filtering
 
 ## Coming Soon
 
-- 📈 **Enhanced Lineage Graph** - Interactive DAG visualization
-- 🏷️ **Tags & Filtering** - Better organization and multi-tag support
+- 📈 **Enhanced Lineage Graph** - Interactive DAG visualization with D3.js
 - 🔗 **Dependency Tree** - Visual dependencies graph
 - 💾 **Export** - Download documentation as PDF
 - 📊 **Test Results** - Live test run status and history
+- 🔍 **Column-level Lineage** - Track data flow at column level
 
 ## Tech Stack
 
