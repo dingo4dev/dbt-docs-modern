@@ -16,10 +16,6 @@
   let showSeeds = true;
   let showTests = false; // Hidden by default
   let showSnapshots = true;
-  let selectedSchemas = [];
-  let selectedDatabases = [];
-  let allSchemas = [];
-  let allDatabases = [];
   let filtersExpanded = false;
   
   // UI state
@@ -27,14 +23,14 @@
   let isFullscreen = false;
   let containerElement;
   let hasInitialZoom = false; // Track if we've done initial zoom
+  let isLoading = true; // Loading state for initial render
+  let panToNode = true; // Toggle for auto-pan to clicked node
   
   // Extract nodes and edges from manifest
   function buildGraph(manifest, focusModel = null) {
     const nodes = [];
     const links = [];
     const nodeMap = new Map();
-    const schemas = new Set();
-    const databases = new Set();
     
     // Build nodes from manifest
     Object.entries(manifest.nodes || {}).forEach(([id, node]) => {
@@ -49,17 +45,9 @@
         description: node.description || ''
       };
       
-      // Track schemas and databases
-      if (node.schema) schemas.add(node.schema);
-      if (node.database) databases.add(node.database);
-      
       nodes.push(nodeData);
       nodeMap.set(id, nodeData);
     });
-    
-    // Update filter lists
-    allSchemas = Array.from(schemas).sort();
-    allDatabases = Array.from(databases).sort();
     
     // Build edges from dependencies
     Object.entries(manifest.nodes || {}).forEach(([id, node]) => {
@@ -81,12 +69,6 @@
       if (n.type === 'seed' && !showSeeds) return false;
       if (n.type === 'test' && !showTests) return false;
       if (n.type === 'snapshot' && !showSnapshots) return false;
-      
-      // Schema filter
-      if (selectedSchemas.length > 0 && !selectedSchemas.includes(n.schema)) return false;
-      
-      // Database filter
-      if (selectedDatabases.length > 0 && !selectedDatabases.includes(n.database)) return false;
       
       return true;
     });
@@ -395,7 +377,8 @@
     feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
     
     // Node background (table card) - RESPONSIVE width (variables defined earlier)
-    node.append('rect')
+    const nodeRect = node.append('rect')
+      .attr('class', 'node-background')
       .attr('width', tableWidth)
       .attr('height', d => {
         const cols = getNodeColumnsForGraph(d);
@@ -408,8 +391,17 @@
       })
       .attr('rx', 8) // More rounded corners
       .attr('fill', 'white')
-      .attr('stroke', d => d.id === selectedModel ? '#3b82f6' : getNodeColor(d))
-      .attr('stroke-width', d => d.id === selectedModel ? 3 : 2)
+      .attr('stroke', d => {
+        // Bright orange for clicked node, blue for selectedModel, default gray
+        if (selectedNode && d.id === selectedNode.id) return '#f97316'; // orange-500
+        if (d.id === selectedModel) return '#3b82f6'; // blue-500
+        return getNodeColor(d); // gray
+      })
+      .attr('stroke-width', d => {
+        if (selectedNode && d.id === selectedNode.id) return 4; // Thicker for clicked
+        if (d.id === selectedModel) return 3;
+        return 2;
+      })
       .attr('filter', 'url(#node-shadow)')
       .attr('class', 'transition-all dark:fill-gray-800');
     
@@ -626,11 +618,42 @@
       }
     });
     
-    // Click handler - show in sidebar, don't navigate
+    // Click handler - show in sidebar, pan to node, update stroke
     node.on('click', (event, d) => {
       event.stopPropagation();
       selectedNode = d;
-      // Don't trigger navigation, just show sidebar
+      
+      // Update all node strokes (highlight clicked node)
+      nodeRect
+        .transition()
+        .duration(300)
+        .attr('stroke', nd => {
+          if (nd.id === d.id) return '#f97316'; // Orange for clicked
+          if (nd.id === selectedModel) return '#3b82f6'; // Blue for selectedModel
+          return getNodeColor(nd); // Gray default
+        })
+        .attr('stroke-width', nd => {
+          if (nd.id === d.id) return 4; // Thicker for clicked
+          if (nd.id === selectedModel) return 3;
+          return 2;
+        });
+      
+      // Pan camera to center on clicked node (if enabled)
+      if (panToNode && window.graphSvg && window.graphZoom) {
+        const currentTransform = d3.zoomTransform(window.graphSvg.node());
+        const scale = currentTransform.k;
+        
+        // Calculate new center position
+        const x = width / 2 - scale * d.x;
+        const y = height / 2 - scale * d.y;
+        
+        window.graphSvg.transition()
+          .duration(750)
+          .call(
+            window.graphZoom.transform,
+            d3.zoomIdentity.translate(x, y).scale(scale)
+          );
+      }
     });
     
     // Hover effects - MODERN
@@ -671,7 +694,12 @@
       d3.select(this).select('rect')
         .transition()
         .duration(200)
-        .attr('stroke-width', d.id === selectedModel ? 3 : 2)
+        .attr('stroke-width', () => {
+          // Keep clicked node highlighted
+          if (selectedNode && d.id === selectedNode.id) return 4;
+          if (d.id === selectedModel) return 3;
+          return 2;
+        })
         .attr('transform', 'scale(1)');
       
       link
@@ -733,7 +761,10 @@
         const midX = bounds.x + fullWidth / 2;
         const midY = bounds.y + fullHeight / 2;
         
-        if (fullWidth === 0 || fullHeight === 0) return;
+        if (fullWidth === 0 || fullHeight === 0) {
+          isLoading = false; // Hide loading even if empty
+          return;
+        }
         
         // Use 0.8 scale factor to show ALL elements (higher = more zoomed out for small containers)
         const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
@@ -745,7 +776,11 @@
           .call(
             zoom.transform,
             d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-          );
+          )
+          .on('end', () => {
+            // Hide loading overlay after zoom animation completes
+            isLoading = false;
+          });
       }, 100); // Faster delay for flowchart
     }
   }
@@ -793,34 +828,8 @@
     renderGraph();
   }
   
-  $: schemaState = selectedSchemas.join(',') + '|' + selectedDatabases.join(',');
-  $: if (svgContainer && schemaState) {
-    console.log('Render: schema filters changed');
-    renderGraph();
-  }
-  
-  // Toggle schema filter
-  function toggleSchema(schema) {
-    if (selectedSchemas.includes(schema)) {
-      selectedSchemas = selectedSchemas.filter(s => s !== schema);
-    } else {
-      selectedSchemas = [...selectedSchemas, schema];
-    }
-  }
-  
-  // Toggle database filter
-  function toggleDatabase(db) {
-    if (selectedDatabases.includes(db)) {
-      selectedDatabases = selectedDatabases.filter(d => d !== db);
-    } else {
-      selectedDatabases = [...selectedDatabases, db];
-    }
-  }
-  
   // Clear all filters
   function clearFilters() {
-    selectedSchemas = [];
-    selectedDatabases = [];
     showModels = true;
     showSources = true;
     showSeeds = true;
@@ -880,17 +889,17 @@
 </script>
 
 <div bind:this={containerElement} class="w-full h-full bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden flex flex-col min-h-0">
-  <!-- Compact Header with Filters -->
-  <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+  <!-- Compact Header with Filters - RESPONSIVE -->
+  <div class="p-2 md:p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
     <!-- Title Row -->
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-3">
-        <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+    <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+      <div class="flex items-center gap-2 md:gap-3 min-w-0">
+        <h3 class="text-sm md:text-base font-semibold text-gray-900 dark:text-white truncate">
           {selectedModel ? 'Model Lineage' : 'Full DAG'}
         </h3>
         
-        <!-- Resource Type Filters (Compact) -->
-        <div class="flex gap-1.5">
+        <!-- Resource Type Filters (Compact) - HIDE ON MOBILE, show in expandable menu -->
+        <div class="hidden md:flex gap-1.5">
           <button
             on:click={() => showModels = !showModels}
             class={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
@@ -953,28 +962,60 @@
         </div>
       </div>
       
-      <!-- Action Buttons -->
-      <div class="flex items-center gap-2">
-        {#if allSchemas.length > 1 || allDatabases.length > 1}
+      <!-- Action Buttons - RESPONSIVE -->
+      <div class="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+        <!-- Mobile: Show filters button -->
+        <button
+          on:click={() => filtersExpanded = !filtersExpanded}
+          class="md:hidden px-2 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          title="Toggle filters"
+        >
+          ☰
+        </button>
+        
+        <!-- Pan to Node Toggle (iOS style) - HIDE LABEL ON MOBILE -->
+        <div class="flex items-center gap-1.5">
+          <span class="hidden md:inline text-xs font-medium text-gray-600 dark:text-gray-400">
+            Auto Pan
+          </span>
           <button
-            on:click={() => filtersExpanded = !filtersExpanded}
-            class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            on:click={() => panToNode = !panToNode}
+            class={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none ${
+              panToNode ? 'bg-orange-500' : 'bg-gray-300 dark:bg-gray-600'
+            }`}
+            role="switch"
+            aria-checked={panToNode}
+            aria-label="Auto pan to selected node"
+            title={panToNode ? 'Auto-pan enabled' : 'Auto-pan disabled'}
           >
-            {filtersExpanded ? '▲' : '▼'} Filters
+            <span
+              class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                panToNode ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
           </button>
-        {/if}
+        </div>
         
         <button
           on:click={recenterGraph}
-          class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          class="hidden md:block px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           title="Re-center graph"
         >
           ⊙ Center
         </button>
         
+        <!-- Mobile: Icon only buttons -->
+        <button
+          on:click={recenterGraph}
+          class="md:hidden p-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          title="Re-center graph"
+        >
+          ⊙
+        </button>
+        
         <button
           on:click={toggleFullscreen}
-          class="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          class="p-1.5 md:px-3 md:py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           title="Toggle fullscreen"
         >
           ⛶ {isFullscreen ? 'Exit' : 'Full'}
@@ -990,70 +1031,100 @@
       </div>
     </div>
     
-    <!-- Expandable Schema/Database Filters -->
-    {#if filtersExpanded && (allSchemas.length > 1 || allDatabases.length > 1)}
-      <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-2 gap-3 text-xs">
-        <!-- Schema Filter -->
-        {#if allSchemas.length > 1}
-          <div>
-            <div class="font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Schemas:
-            </div>
-            <div class="flex flex-wrap gap-1">
-              {#each allSchemas as schema}
-                <button
-                  on:click={() => toggleSchema(schema)}
-                  class={`px-2 py-0.5 rounded text-xs transition-colors ${
-                    selectedSchemas.length === 0 || selectedSchemas.includes(schema)
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'
-                  }`}
-                >
-                  {schema}
-                </button>
-              {/each}
-            </div>
+    <!-- Expandable Filters (Mobile ONLY: show resource types) -->
+    {#if filtersExpanded}
+      <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+        <!-- Mobile ONLY: Resource Type Filters -->
+        <div class="md:hidden">
+          <div class="font-semibold text-gray-700 dark:text-gray-300 mb-2 text-xs">
+            Resource Types:
           </div>
-        {/if}
-        
-        <!-- Database Filter -->
-        {#if allDatabases.length > 1}
-          <div>
-            <div class="font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Databases:
-            </div>
-            <div class="flex flex-wrap gap-1">
-              {#each allDatabases as db}
-                <button
-                  on:click={() => toggleDatabase(db)}
-                  class={`px-2 py-0.5 rounded text-xs transition-colors ${
-                    selectedDatabases.length === 0 || selectedDatabases.includes(db)
-                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
-                      : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'
-                  }`}
-                >
-                  {db}
-                </button>
-              {/each}
-            </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              on:click={() => showModels = !showModels}
+              class={`px-3 py-2 rounded-lg font-medium transition-all ${
+                showModels
+                  ? 'bg-orange-500 text-white shadow-md'
+                  : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              }`}
+            >
+              📊 Models
+            </button>
+            
+            <button
+              on:click={() => showSources = !showSources}
+              class={`px-3 py-2 rounded-lg font-medium transition-all ${
+                showSources
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              }`}
+            >
+              📥 Sources
+            </button>
+            
+            <button
+              on:click={() => showSeeds = !showSeeds}
+              class={`px-3 py-2 rounded-lg font-medium transition-all ${
+                showSeeds
+                  ? 'bg-green-500 text-white shadow-md'
+                  : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              }`}
+            >
+              🌱 Seeds
+            </button>
+            
+            <button
+              on:click={() => showSnapshots = !showSnapshots}
+              class={`px-3 py-2 rounded-lg font-medium transition-all ${
+                showSnapshots
+                  ? 'bg-purple-500 text-white shadow-md'
+                  : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              }`}
+            >
+              📸 Snapshots
+            </button>
+            
+            <button
+              on:click={() => showTests = !showTests}
+              class={`px-3 py-2 rounded-lg font-medium transition-all ${
+                showTests
+                  ? 'bg-red-500 text-white shadow-md'
+                  : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+              }`}
+            >
+              ✓ Tests
+            </button>
           </div>
-        {/if}
+        </div>
       </div>
     {/if}
   </div>
   
   <!-- Graph Canvas with Sidebar -->
   <div class="flex-1 relative overflow-hidden min-h-0">
+    <!-- Loading Overlay -->
+    {#if isLoading}
+      <div class="absolute inset-0 bg-white dark:bg-gray-900 flex items-center justify-center z-50 transition-opacity duration-300">
+        <div class="text-center">
+          <!-- Spinner -->
+          <div class="inline-block w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-orange-500 rounded-full animate-spin mb-4"></div>
+          <div class="text-gray-600 dark:text-gray-400 font-medium">
+            Loading lineage graph...
+          </div>
+        </div>
+      </div>
+    {/if}
+    
     <!-- Main Graph - FULL WIDTH (no flex) -->
     <div class="w-full h-full">
       <svg bind:this={svgContainer} class="w-full h-full"></svg>
     </div>
     
-    <!-- Details Sidebar - OVERLAY (absolute positioned, doesn't affect canvas) -->
+    <!-- Details Sidebar - OVERLAY (full width on mobile, 320px on desktop) -->
     {#if selectedNode}
-      <div class="absolute top-0 right-0 w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-full shadow-xl z-50">
+      <div class="absolute top-0 right-0 w-full md:w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-full shadow-xl z-50">
         <!-- Sidebar Header - FIXED -->
-        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between flex-shrink-0">
+        <div class="p-3 md:p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between flex-shrink-0">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-2">
               <div class={`w-3 h-3 rounded-full ${
