@@ -115,7 +115,7 @@
         </div>
         
         <button 
-          onclick={toggleDarkMode}
+          on:click={toggleDarkMode}
           class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
         >
           {#if darkMode}
@@ -231,7 +231,7 @@
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each filteredModels.slice(0, 20) as model}
             <button
-              onclick={() => showModelDetail(model)}
+              on:click={() => showModelDetail(model)}
               class="w-full px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
             >
               <div class="flex items-center justify-between">
@@ -270,7 +270,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Back Button -->
       <button 
-        onclick={backToOverview}
+        on:click={backToOverview}
         class="mb-6 inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
       >
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
