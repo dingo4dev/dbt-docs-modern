@@ -2,6 +2,13 @@
 
 A modern, single-file alternative to dbt-docs with enhanced UI and better user experience.
 
+## 🎯 Live Demo
+
+See it in action with a real dbt project:  
+👉 **[dbt-medallion-demo](https://github.com/dingo4dev/dbt-medallion-demo)** - Medallion architecture with dbt-duckdb
+
+Download `demo/modern-docs.html` from that repo and open in your browser!
+
 ## Features
 
 - ✨ **Modern UI** - Clean, intuitive interface built with Svelte + Tailwind CSS
