@@ -16,10 +16,30 @@
   let sortBy = 'name'; // 'name', 'updated', 'dependencies'
   let showLineage = false; // Show lineage graph
   let lineageModel = null; // Model for lineage view
+  
+  // Recent & Favorites
+  let recentModels = []; // Array of model unique_ids
+  let favoriteModels = []; // Array of model unique_ids
+  let showRecents = false;
+  let showFavorites = false;
+  
+  // Navigation breadcrumb
+  let breadcrumb = []; // Array of { type, name, id }
+  
+  // Sidebar navigation
+  let sidebarOpen = true;
+  let expandedFolders = new Set(); // Set of expanded folder paths (e.g., "models.staging")
 
   // Load manifest and catalog
   onMount(async () => {
     try {
+      // Load recent/favorites from localStorage
+      const savedRecents = localStorage.getItem('dbt-docs-recents');
+      const savedFavorites = localStorage.getItem('dbt-docs-favorites');
+      
+      if (savedRecents) recentModels = JSON.parse(savedRecents);
+      if (savedFavorites) favoriteModels = JSON.parse(savedFavorites);
+      
       // Try to load from current directory (dbt docs serve)
       const [manifestRes, catalogRes] = await Promise.all([
         fetch('./manifest.json'),
@@ -34,6 +54,52 @@
       loading = false;
     }
   });
+  
+  // Add to recent models (max 10)
+  function addToRecent(modelId) {
+    recentModels = [modelId, ...recentModels.filter(id => id !== modelId)].slice(0, 10);
+    localStorage.setItem('dbt-docs-recents', JSON.stringify(recentModels));
+  }
+  
+  // Toggle favorite
+  function toggleFavorite(modelId) {
+    if (favoriteModels.includes(modelId)) {
+      favoriteModels = favoriteModels.filter(id => id !== modelId);
+    } else {
+      favoriteModels = [modelId, ...favoriteModels];
+    }
+    localStorage.setItem('dbt-docs-favorites', JSON.stringify(favoriteModels));
+  }
+  
+  // Check if model is favorite
+  function isFavorite(modelId) {
+    return favoriteModels.includes(modelId);
+  }
+  
+  // Update breadcrumb
+  function updateBreadcrumb(type, name, id) {
+    if (type === 'home') {
+      breadcrumb = [];
+    } else {
+      breadcrumb = [...breadcrumb, { type, name, id }];
+    }
+  }
+  
+  // Navigate via breadcrumb
+  function navigateBreadcrumb(index) {
+    if (index === -1) {
+      // Home
+      selectedNode = null;
+      view = 'overview';
+      breadcrumb = [];
+    } else {
+      breadcrumb = breadcrumb.slice(0, index + 1);
+      const item = breadcrumb[index];
+      if (item.type === 'model') {
+        selectModel(manifest.nodes[item.id]);
+      }
+    }
+  }
 
   // Get models from manifest
   $: models = manifest ? Object.values(manifest.nodes || {})
@@ -79,6 +145,75 @@
     
     return matchesSearch && matchesTags && matchesMat;
   });
+  
+  // Build folder tree from models (based on file paths)
+  $: folderTree = (() => {
+    const tree = {};
+    
+    models.forEach(model => {
+      // Parse file path to create folder structure
+      const filePath = model.original_file_path || model.path || model.name;
+      const pathParts = filePath.split('/');
+      
+      // Use first part as root (models, staging, etc.) or 'models' as default
+      const rootType = pathParts.length > 1 ? pathParts[0] : 'models';
+      
+      if (!tree[rootType]) {
+        tree[rootType] = { name: rootType, children: {}, models: [] };
+      }
+      
+      let current = tree[rootType];
+      
+      // Build folder hierarchy (skip root and filename)
+      if (pathParts.length > 2) {
+        for (let i = 1; i < pathParts.length - 1; i++) {
+          const folder = pathParts[i];
+          if (!current.children[folder]) {
+            current.children[folder] = { name: folder, children: {}, models: [], path: pathParts.slice(0, i + 1).join('/') };
+          }
+          current = current.children[folder];
+        }
+      }
+      
+      // Add model to current folder (either root or leaf subfolder)
+      current.models.push(model);
+    });
+    
+    return tree;
+  })();
+  
+  // Auto-expand all root folders when tree is built
+  $: if (Object.keys(folderTree).length > 0 && expandedFolders.size === 0) {
+    Object.keys(folderTree).forEach(rootName => {
+      expandedFolders.add(rootName);
+      
+      // Also expand all subfolders
+      const rootFolder = folderTree[rootName];
+      Object.entries(rootFolder.children || {}).forEach(([childName, childFolder]) => {
+        expandedFolders.add(childFolder.path || `${rootName}/${childName}`);
+      });
+    });
+    expandedFolders = expandedFolders;
+  }
+  
+  // Toggle folder expansion
+  function toggleFolder(path) {
+    if (expandedFolders.has(path)) {
+      expandedFolders.delete(path);
+    } else {
+      expandedFolders.add(path);
+    }
+    expandedFolders = expandedFolders; // Trigger reactivity
+  }
+  
+  // Count total models in folder (including subfolders)
+  function countModels(folder) {
+    let count = folder.models.length;
+    Object.values(folder.children || {}).forEach(child => {
+      count += countModels(child);
+    });
+    return count;
+  }
 
   // Group filtered models
   $: groupedModels = (() => {
@@ -141,12 +276,19 @@
   function showModelDetail(model) {
     selectedNode = model;
     view = 'detail';
+    
+    // Add to recent models
+    addToRecent(model.unique_id);
+    
+    // Update breadcrumb
+    updateBreadcrumb('model', model.name, model.unique_id);
   }
 
   // Back to overview
   function backToOverview() {
     selectedNode = null;
     view = 'overview';
+    breadcrumb = [];
   }
 
   // Toggle tag filter
@@ -242,23 +384,148 @@
           </div>
         </div>
         
-        <button 
-          on:click={toggleDarkMode}
-          class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        >
-          {#if darkMode}
-            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
-            </svg>
-          {:else}
-            <svg class="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
-            </svg>
-          {/if}
-        </button>
+        <div class="flex items-center gap-2">
+          <!-- Recent Models -->
+          <div class="relative">
+            <button
+              on:click={() => showRecents = !showRecents}
+              class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+              title="Recent models"
+            >
+              <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              {#if recentModels.length > 0}
+                <span class="absolute top-0 right-0 w-2 h-2 bg-orange-500 rounded-full"></span>
+              {/if}
+            </button>
+            
+            {#if showRecents && recentModels.length > 0}
+              <div class="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div class="p-2">
+                  <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-2 py-1">
+                    Recent Models
+                  </div>
+                  {#each recentModels.slice(0, 10) as modelId}
+                    {@const model = manifest.nodes[modelId]}
+                    {#if model}
+                      <button
+                        on:click={() => { showModelDetail(model); showRecents = false; }}
+                        class="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                      >
+                        <div class="font-medium text-gray-900 dark:text-white truncate">{model.name}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">{model.schema}</div>
+                      </button>
+                    {/if}
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+          
+          <!-- Favorites -->
+          <div class="relative">
+            <button
+              on:click={() => showFavorites = !showFavorites}
+              class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+              title="Favorite models"
+            >
+              <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill={favoriteModels.length > 0 ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+              </svg>
+              {#if favoriteModels.length > 0}
+                <span class="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                  {favoriteModels.length}
+                </span>
+              {/if}
+            </button>
+            
+            {#if showFavorites && favoriteModels.length > 0}
+              <div class="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div class="p-2">
+                  <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-2 py-1">
+                    Favorite Models
+                  </div>
+                  {#each favoriteModels as modelId}
+                    {@const model = manifest.nodes[modelId]}
+                    {#if model}
+                      <button
+                        on:click={() => { showModelDetail(model); showFavorites = false; }}
+                        class="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                      >
+                        <div class="font-medium text-gray-900 dark:text-white truncate">{model.name}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">{model.schema}</div>
+                      </button>
+                    {/if}
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+          
+          <!-- Dark mode toggle -->
+          <button 
+            on:click={toggleDarkMode}
+            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            {#if darkMode}
+              <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
+              </svg>
+            {:else}
+              <svg class="w-5 h-5 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+              </svg>
+            {/if}
+          </button>
+        </div>
       </div>
+      
+      <!-- Breadcrumb Navigation -->
+      {#if breadcrumb.length > 0}
+        <div class="mt-3 flex items-center gap-2 text-sm">
+          <button
+            on:click={() => navigateBreadcrumb(-1)}
+            class="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+            </svg>
+            Home
+          </button>
+          
+          {#each breadcrumb as item, i}
+            <span class="text-gray-400 dark:text-gray-600">/</span>
+            <button
+              on:click={() => navigateBreadcrumb(i)}
+              class={`hover:text-orange-500 transition-colors truncate max-w-xs ${
+                i === breadcrumb.length - 1
+                  ? 'text-orange-500 font-medium'
+                  : 'text-gray-600 dark:text-gray-300'
+              }`}
+            >
+              {item.name}
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   </header>
+  
+  <!-- Sidebar Toggle Button (floating) -->
+  <button
+    on:click={() => sidebarOpen = !sidebarOpen}
+    class="fixed left-4 top-24 z-40 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+    title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+  >
+    <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {#if sidebarOpen}
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      {:else}
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      {/if}
+    </svg>
+  </button>
 
   {#if loading}
     <div class="flex items-center justify-center h-96">
@@ -275,6 +542,104 @@
       </div>
     </div>
   {:else}
+    <!-- Main Layout with Sidebar -->
+    <div class="flex relative">
+      <!-- Left Sidebar (Folder Navigation) -->
+      {#if sidebarOpen}
+        <aside class="fixed left-0 top-32 bottom-0 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto z-30 shadow-lg">
+          <div class="p-4">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+              </svg>
+              Project Structure
+            </h3>
+            
+            <!-- Folder Tree -->
+            {#if Object.keys(folderTree).length === 0}
+              <div class="text-sm text-gray-500 dark:text-gray-400 italic p-2">
+                No models found.
+              </div>
+            {:else}
+            {#each Object.entries(folderTree) as [rootName, rootFolder]}
+                <div class="mb-2">
+                  <!-- Root Folder Button -->
+                  <button
+                    on:click={() => toggleFolder(rootName)}
+                    class="w-full flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                  >
+                    <svg class="w-3 h-3 transition-transform {expandedFolders.has(rootName) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+                    </svg>
+                    {rootName}
+                    <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{countModels(rootFolder)}</span>
+                  </button>
+                  
+                  {#if expandedFolders.has(rootName)}
+                    <div class="ml-3 mt-1 space-y-0.5">
+                      <!-- Subfolders -->
+                      {#each Object.entries(rootFolder.children || {}) as [childName, childFolder]}
+                        <div class="mb-1">
+                          <button
+                            on:click={() => toggleFolder(childFolder.path || `${rootName}/${childName}`)}
+                            class="w-full flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                          >
+                            <svg class="w-2.5 h-2.5 transition-transform {expandedFolders.has(childFolder.path || `${rootName}/${childName}`) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                            <svg class="w-3.5 h-3.5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+                            </svg>
+                            {childName}
+                            <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{countModels(childFolder)}</span>
+                          </button>
+                          
+                          {#if expandedFolders.has(childFolder.path || `${rootName}/${childName}`)}
+                            <div class="ml-4 mt-0.5 space-y-0.5">
+                              {#each childFolder.models as model}
+                                <button
+                                  on:click={() => showModelDetail(model)}
+                                  class="w-full flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors {selectedNode?.unique_id === model.unique_id ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-600 dark:text-gray-400'}"
+                                  title={model.name}
+                                >
+                                  <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                                  </svg>
+                                  <span class="truncate">{model.name}</span>
+                                </button>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                      
+                      <!-- Root-level models (if any) -->
+                      {#each rootFolder.models as model}
+                        <button
+                          on:click={() => showModelDetail(model)}
+                          class="w-full flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors {selectedNode?.unique_id === model.unique_id ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-600 dark:text-gray-400'}"
+                          title={model.name}
+                        >
+                          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                          </svg>
+                          <span class="truncate">{model.name}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+            {/each}
+            {/if}
+          </div>
+        </aside>
+      {/if}
+      
+      <!-- Main Content (with left margin when sidebar open) -->
+      <div class="flex-1 {sidebarOpen ? 'ml-64' : 'ml-0'} transition-all duration-300">
     {#if view === 'overview'}
     <!-- Stats Overview -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -546,7 +911,28 @@
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
         <div class="flex items-start justify-between">
           <div class="flex-1">
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{selectedNode.name}</h1>
+            <div class="flex items-center gap-3 mb-2">
+              <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{selectedNode.name}</h1>
+              
+              <!-- Favorite Star Button -->
+              <button
+                on:click={() => toggleFavorite(selectedNode.unique_id)}
+                class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title={isFavorite(selectedNode.unique_id) ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <svg 
+                  class="w-6 h-6 transition-colors"
+                  fill={isFavorite(selectedNode.unique_id) ? 'currentColor' : 'none'}
+                  stroke="currentColor"
+                  class:text-yellow-500={isFavorite(selectedNode.unique_id)}
+                  class:text-gray-400={!isFavorite(selectedNode.unique_id)}
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                </svg>
+              </button>
+            </div>
+            
             {#if selectedNode.description}
               <p class="text-lg text-gray-600 dark:text-gray-300 mb-4">{selectedNode.description}</p>
             {/if}
@@ -730,6 +1116,8 @@
       </div>
     </div>
     {/if}
+    </div>
+    </div>
   {/if}
 
   <!-- Lineage Modal with D3 Graph -->
