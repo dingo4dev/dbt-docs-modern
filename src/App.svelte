@@ -23,11 +23,15 @@
   let showRecents = false;
   let showFavorites = false;
   
+  // Tag filter UI state
+  let showAllTags = false;
+  const MAX_VISIBLE_TAGS = 5; // Show first 5 tags on mobile
+  
   // Navigation breadcrumb
   let breadcrumb = []; // Array of { type, name, id }
   
-  // Sidebar navigation
-  let sidebarOpen = true;
+  // Sidebar navigation (default closed on mobile, open on desktop)
+  let sidebarOpen = typeof window !== 'undefined' ? window.innerWidth >= 1024 : true;
   let expandedFolders = new Set(); // Set of expanded folder paths (e.g., "models.staging")
 
   // Load manifest and catalog
@@ -53,6 +57,18 @@
       error = 'Failed to load dbt documentation files. Make sure manifest.json and catalog.json exist in the same directory.';
       loading = false;
     }
+    
+    // Handle window resize to auto-close sidebar on mobile
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        sidebarOpen = false;
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   });
   
   // Add to recent models (max 10)
@@ -81,7 +97,8 @@
     if (type === 'home') {
       breadcrumb = [];
     } else {
-      breadcrumb = [...breadcrumb, { type, name, id }];
+      // Replace entire breadcrumb with new item (not append)
+      breadcrumb = [{ type, name, id }];
     }
   }
   
@@ -282,6 +299,11 @@
     
     // Update breadcrumb
     updateBreadcrumb('model', model.name, model.unique_id);
+    
+    // Close sidebar on mobile
+    if (window.innerWidth < 1024) {
+      sidebarOpen = false;
+    }
   }
 
   // Back to overview
@@ -371,28 +393,57 @@
 
 <main class="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
   <!-- Header -->
-  <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+  <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-3 sm:py-4">
       <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <svg class="w-8 h-8 text-orange-500" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M12.6,9.265l0,0L10.9,6.325a3.31,3.31,0,0,0-.529-.7h0a3.264,3.264,0,0,0-3.184-.867,4.022,4.022,0,0,1,4.194.938,3.977,3.977,0,0,1,.635.833l.38.657a2.488,2.488,0,0,1,.2-.465l2.226-3.851a1.2,1.2,0,0,0-.2-1.5,1.2,1.2,0,0,0-1.5-.2h0L9.27,3.4a2.539,2.539,0,0,1-2.54,0L2.877,1.178A1.253,1.253,0,0,0,2.247,1a1.247,1.247,0,0,0-.871.375,1.2,1.2,0,0,0-.2,1.5L3.4,6.726a2.542,2.542,0,0,1,0,2.539l-2.226,3.85a1.2,1.2,0,0,0,.2,1.5,1.2,1.2,0,0,0,1.5.2L6.73,12.588a2.455,2.455,0,0,1,.465-.2l-.657-.379a3.857,3.857,0,0,1-1.462-1.467,4.118,4.118,0,0,1-.288-3.368,3.453,3.453,0,0,0,.33,2.507A3.141,3.141,0,0,0,6.329,10.89l2.94,1.7h0l3.853,2.224a1.243,1.243,0,0,0,1.7-1.7Z"/>
+        <!-- Logo + Menu Button (Mobile) -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Mobile Menu Button -->
+          <button
+            on:click={() => sidebarOpen = !sidebarOpen}
+            class="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title={sidebarOpen ? 'Close menu' : 'Open menu'}
+          >
+            <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {#if sidebarOpen}
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              {:else}
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+              {/if}
+            </svg>
+          </button>
+          
+          <!-- Logo: Document with data layers -->
+          <svg class="w-6 h-6 sm:w-8 sm:h-8" viewBox="0 0 100 100">
+            <defs>
+              <linearGradient id="docGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#FF6B35;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#F7931E;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <rect x="20" y="15" width="60" height="70" rx="5" fill="url(#docGrad)" />
+            <line x1="30" y1="30" x2="70" y2="30" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+            <line x1="30" y1="42" x2="70" y2="42" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+            <line x1="30" y1="54" x2="70" y2="54" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+            <path d="M 35 60 L 35 75 L 40 68 L 45 75 L 50 68 L 55 75 L 55 60" 
+                  stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
           </svg>
-          <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">dbt Docs</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400">Modern Documentation</p>
+          <div class="hidden sm:block">
+            <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Material Docs</h1>
+            <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden md:block">for dbt</p>
           </div>
+          <h1 class="sm:hidden text-base font-bold text-gray-900 dark:text-white">Material Docs</h1>
         </div>
         
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1 sm:gap-2">
           <!-- Recent Models -->
           <div class="relative">
             <button
               on:click={() => showRecents = !showRecents}
-              class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+              class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
               title="Recent models"
             >
-              <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
               {#if recentModels.length > 0}
@@ -401,10 +452,20 @@
             </button>
             
             {#if showRecents && recentModels.length > 0}
-              <div class="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+              <div class="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-auto mt-2 sm:w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-[60vh] overflow-y-auto">
                 <div class="p-2">
-                  <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-2 py-1">
-                    Recent Models
+                  <div class="flex items-center justify-between px-2 py-1 mb-1">
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                      Recent Models
+                    </div>
+                    <button
+                      on:click={() => showRecents = false}
+                      class="sm:hidden p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                    </button>
                   </div>
                   {#each recentModels.slice(0, 10) as modelId}
                     {@const model = manifest.nodes[modelId]}
@@ -427,24 +488,34 @@
           <div class="relative">
             <button
               on:click={() => showFavorites = !showFavorites}
-              class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+              class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
               title="Favorite models"
             >
-              <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill={favoriteModels.length > 0 ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-700 dark:text-gray-300" fill={favoriteModels.length > 0 ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
               </svg>
               {#if favoriteModels.length > 0}
-                <span class="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                <span class="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-yellow-500 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center font-bold">
                   {favoriteModels.length}
                 </span>
               {/if}
             </button>
             
             {#if showFavorites && favoriteModels.length > 0}
-              <div class="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+              <div class="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-auto mt-2 sm:w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-[60vh] overflow-y-auto">
                 <div class="p-2">
-                  <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 px-2 py-1">
-                    Favorite Models
+                  <div class="flex items-center justify-between px-2 py-1 mb-1">
+                    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                      Favorite Models
+                    </div>
+                    <button
+                      on:click={() => showFavorites = false}
+                      class="sm:hidden p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                    </button>
                   </div>
                   {#each favoriteModels as modelId}
                     {@const model = manifest.nodes[modelId]}
@@ -466,10 +537,10 @@
           <!-- Dark mode toggle -->
           <button 
             on:click={toggleDarkMode}
-            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            class="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             {#if darkMode}
-              <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
               </svg>
             {:else}
@@ -483,22 +554,22 @@
       
       <!-- Breadcrumb Navigation -->
       {#if breadcrumb.length > 0}
-        <div class="mt-3 flex items-center gap-2 text-sm">
+        <div class="mt-2 sm:mt-3 flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
           <button
             on:click={() => navigateBreadcrumb(-1)}
-            class="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            class="flex items-center gap-1 sm:gap-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors whitespace-nowrap"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
             </svg>
-            Home
+            <span class="hidden sm:inline">Home</span>
           </button>
           
           {#each breadcrumb as item, i}
             <span class="text-gray-400 dark:text-gray-600">/</span>
             <button
               on:click={() => navigateBreadcrumb(i)}
-              class={`hover:text-orange-500 transition-colors truncate max-w-xs ${
+              class={`hover:text-orange-500 transition-colors truncate max-w-[200px] sm:max-w-xs ${
                 i === breadcrumb.length - 1
                   ? 'text-orange-500 font-medium'
                   : 'text-gray-600 dark:text-gray-300'
@@ -512,21 +583,7 @@
     </div>
   </header>
   
-  <!-- Sidebar Toggle Button (floating) -->
-  <button
-    on:click={() => sidebarOpen = !sidebarOpen}
-    class="fixed left-4 top-24 z-40 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-    title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-  >
-    <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      {#if sidebarOpen}
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-      {:else}
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-      {/if}
-    </svg>
-  </button>
-
+  
   {#if loading}
     <div class="flex items-center justify-center h-96">
       <div class="text-center">
@@ -544,16 +601,35 @@
   {:else}
     <!-- Main Layout with Sidebar -->
     <div class="flex relative">
+      <!-- Mobile Backdrop Overlay -->
+      {#if sidebarOpen}
+        <div 
+          class="lg:hidden fixed inset-0 bg-black/50 z-40 top-14"
+          on:click={() => sidebarOpen = false}
+        ></div>
+      {/if}
+      
       <!-- Left Sidebar (Folder Navigation) -->
       {#if sidebarOpen}
-        <aside class="fixed left-0 top-32 bottom-0 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto z-30 shadow-lg">
-          <div class="p-4">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-              </svg>
-              Project Structure
-            </h3>
+        <aside class="fixed left-0 top-14 sm:top-16 bottom-0 w-64 sm:w-72 lg:w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto z-50 lg:z-30 shadow-xl lg:shadow-lg transition-transform duration-300">
+          <div class="p-3 sm:p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                Project Structure
+              </h3>
+              <!-- Close button for mobile -->
+              <button
+                on:click={() => sidebarOpen = false}
+                class="lg:hidden p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
             
             <!-- Folder Tree -->
             {#if Object.keys(folderTree).length === 0}
@@ -639,78 +715,78 @@
       {/if}
       
       <!-- Main Content (with left margin when sidebar open) -->
-      <div class="flex-1 {sidebarOpen ? 'ml-64' : 'ml-0'} transition-all duration-300">
+      <div class="flex-1 lg:{sidebarOpen ? 'ml-64' : 'ml-0'} transition-all duration-300">
     {#if view === 'overview'}
     <!-- Stats Overview -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="flex-shrink-0 bg-blue-500 rounded-lg p-3">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 lg:p-6 min-h-[80px] sm:min-h-[96px]">
+          <div class="flex items-center h-full">
+            <div class="flex-shrink-0 bg-blue-500 rounded-lg p-2 sm:p-3">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
               </svg>
             </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Models</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">{models.length}</p>
+            <div class="ml-2 sm:ml-3 lg:ml-4">
+              <p class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Models</p>
+              <p class="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white">{models.length}</p>
             </div>
           </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="flex-shrink-0 bg-green-500 rounded-lg p-3">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 lg:p-6 min-h-[80px] sm:min-h-[96px]">
+          <div class="flex items-center h-full">
+            <div class="flex-shrink-0 bg-green-500 rounded-lg p-2 sm:p-3">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
               </svg>
             </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Sources</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">{sources.length}</p>
+            <div class="ml-2 sm:ml-3 lg:ml-4">
+              <p class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Sources</p>
+              <p class="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white">{sources.length}</p>
             </div>
           </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="flex-shrink-0 bg-purple-500 rounded-lg p-3">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 lg:p-6 min-h-[80px] sm:min-h-[96px]">
+          <div class="flex items-center h-full">
+            <div class="flex-shrink-0 bg-purple-500 rounded-lg p-2 sm:p-3">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
               </svg>
             </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Tests</p>
-              <p class="text-2xl font-semibold text-gray-900 dark:text-white">{tests.length}</p>
+            <div class="ml-2 sm:ml-3 lg:ml-4">
+              <p class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Tests</p>
+              <p class="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white">{tests.length}</p>
             </div>
           </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div class="flex items-center">
-            <div class="flex-shrink-0 bg-orange-500 rounded-lg p-3">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 lg:p-6 min-h-[80px] sm:min-h-[96px]">
+          <div class="flex items-center h-full">
+            <div class="flex-shrink-0 bg-orange-500 rounded-lg p-2 sm:p-3">
+              <svg class="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
             </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Generated</p>
-              <p class="text-sm font-semibold text-gray-900 dark:text-white">{formatDate(manifest.metadata.generated_at)}</p>
+            <div class="ml-2 sm:ml-3 lg:ml-4 min-w-0 flex-1">
+              <p class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Generated</p>
+              <p class="text-[10px] sm:text-xs lg:text-sm font-semibold text-gray-900 dark:text-white truncate">{formatDate(manifest.metadata.generated_at)}</p>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Search Bar -->
-      <div class="mb-6">
+      <div class="mb-4 sm:mb-6">
         <div class="relative">
           <input 
             type="text" 
             bind:value={searchQuery}
             placeholder="Search models, sources, tests..."
-            class="w-full px-4 py-3 pl-11 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            class="w-full px-3 sm:px-4 py-2 sm:py-3 pl-9 sm:pl-11 text-sm sm:text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent"
           />
-          <svg class="absolute left-3 top-3.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="absolute left-2.5 sm:left-3 top-2.5 sm:top-3.5 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
         </div>
@@ -718,10 +794,10 @@
 
       <!-- Tag Filter -->
       {#if allTags.length > 0}
-        <div class="mb-6">
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Filter by Tags</h3>
+        <div class="mb-4 sm:mb-6">
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4">
+            <div class="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 class="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">Filter by Tags</h3>
               {#if selectedTags.length > 0}
                 <button
                   on:click={clearTags}
@@ -731,27 +807,36 @@
                 </button>
               {/if}
             </div>
-            <div class="flex flex-wrap gap-2">
-              {#each allTags as tag}
+            <div class="flex flex-wrap gap-1.5 sm:gap-2">
+              {#each (showAllTags ? allTags : allTags.slice(0, MAX_VISIBLE_TAGS)) as tag}
                 <button
                   on:click={() => toggleTag(tag)}
-                  class={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  class={`inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                     selectedTags.includes(tag)
                       ? 'bg-orange-500 text-white hover:bg-orange-600'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
                 >
-                  <svg class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1 sm:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
                   </svg>
                   {tag}
                   {#if selectedTags.includes(tag)}
-                    <svg class="w-3 h-3 ml-1.5" fill="currentColor" viewBox="0 0 20 20">
+                    <svg class="w-2.5 h-2.5 sm:w-3 sm:h-3 ml-1 sm:ml-1.5" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
                     </svg>
                   {/if}
                 </button>
               {/each}
+              
+              {#if allTags.length > MAX_VISIBLE_TAGS}
+                <button
+                  on:click={() => showAllTags = !showAllTags}
+                  class="inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500 transition-colors"
+                >
+                  {showAllTags ? '− Less' : `+ ${allTags.length - MAX_VISIBLE_TAGS} more`}
+                </button>
+              {/if}
             </div>
             {#if selectedTags.length > 0}
               <div class="mt-3 text-xs text-gray-500 dark:text-gray-400">
@@ -812,30 +897,32 @@
       {/if}
 
       <!-- Models List -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Models</h2>
-            <div class="flex items-center space-x-4">
-              <span class="text-sm text-gray-500 dark:text-gray-400">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="flex items-baseline gap-2">
+              <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Models</h2>
+              <span class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                 {filteredModels.length} of {models.length}
               </span>
-              <div class="flex items-center space-x-2">
-                <span class="text-xs text-gray-500 dark:text-gray-400">Sort:</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
+              <div class="flex items-center gap-1.5">
+                <span class="text-gray-500 dark:text-gray-400">Sort:</span>
                 <select
                   bind:value={sortBy}
-                  class="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  class="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="name">Name</option>
                   <option value="updated">Recently Updated</option>
                   <option value="dependencies">Dependencies</option>
                 </select>
               </div>
-              <div class="flex items-center space-x-2">
-                <span class="text-xs text-gray-500 dark:text-gray-400">Group:</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-gray-500 dark:text-gray-400">Group:</span>
                 <select
                   bind:value={groupBy}
-                  class="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  class="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="none">None</option>
                   <option value="schema">Schema</option>
@@ -848,8 +935,8 @@
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each Object.keys(groupedModels).sort() as groupKey}
             {#if groupBy !== 'none'}
-              <div class="px-6 py-3 bg-gray-50 dark:bg-gray-900/50">
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+              <div class="px-3 sm:px-4 lg:px-6 py-2 sm:py-3 bg-gray-50 dark:bg-gray-900/50">
+                <h3 class="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                   {groupKey} ({groupedModels[groupKey].length})
                 </h3>
               </div>
@@ -857,28 +944,28 @@
             {#each (groupBy === 'none' ? groupedModels[groupKey].slice(0, 50) : groupedModels[groupKey]) as model}
               <button
                 on:click={() => showModelDetail(model)}
-                class="w-full px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+                class="w-full px-3 sm:px-4 lg:px-6 py-3 sm:py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
               >
-                <div class="flex items-center justify-between">
-                  <div class="flex-1">
-                    <h3 class="text-sm font-medium text-gray-900 dark:text-white">{model.name}</h3>
+                <div class="flex items-start sm:items-center justify-between gap-2">
+                  <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-white truncate">{model.name}</h3>
                     {#if model.description}
-                      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{model.description}</p>
+                      <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{model.description}</p>
                     {/if}
-                    <div class="flex items-center space-x-4 mt-2">
+                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
                       {#if groupBy === 'none'}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                           {model.schema}
                         </span>
                       {/if}
                       {#if model.config?.materialized}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                           {model.config.materialized}
                         </span>
                       {/if}
                     </div>
                   </div>
-                  <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                   </svg>
                 </div>
@@ -886,7 +973,7 @@
             {/each}
           {/each}
           {#if filteredModels.length === 0}
-            <div class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+            <div class="px-3 sm:px-6 py-6 sm:py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               No models found matching "{searchQuery}"
             </div>
           {/if}
@@ -895,33 +982,33 @@
     </div>
     {:else if view === 'detail' && selectedNode}
     <!-- Model Detail View -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
       <!-- Back Button -->
       <button 
         on:click={backToOverview}
-        class="mb-6 inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="mb-4 sm:mb-6 inline-flex items-center px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
       >
-        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
         </svg>
         Back to Overview
       </button>
 
       <!-- Model Header -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
         <div class="flex items-start justify-between">
-          <div class="flex-1">
-            <div class="flex items-center gap-3 mb-2">
-              <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{selectedNode.name}</h1>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 sm:gap-3 mb-2">
+              <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white truncate">{selectedNode.name}</h1>
               
               <!-- Favorite Star Button -->
               <button
                 on:click={() => toggleFavorite(selectedNode.unique_id)}
-                class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                class="flex-shrink-0 p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 title={isFavorite(selectedNode.unique_id) ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <svg 
-                  class="w-6 h-6 transition-colors"
+                  class="w-5 h-5 sm:w-6 sm:h-6 transition-colors"
                   fill={isFavorite(selectedNode.unique_id) ? 'currentColor' : 'none'}
                   stroke="currentColor"
                   class:text-yellow-500={isFavorite(selectedNode.unique_id)}
@@ -934,18 +1021,18 @@
             </div>
             
             {#if selectedNode.description}
-              <p class="text-lg text-gray-600 dark:text-gray-300 mb-4">{selectedNode.description}</p>
+              <p class="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-300 mb-3 sm:mb-4">{selectedNode.description}</p>
             {/if}
-            <div class="flex items-center space-x-3">
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 lg:gap-3">
+              <span class="inline-flex items-center px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                <svg class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
                 </svg>
                 {selectedNode.schema}
               </span>
               {#if selectedNode.config?.materialized}
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                  <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span class="inline-flex items-center px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                  <svg class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                   </svg>
                   {selectedNode.config.materialized}
@@ -983,11 +1070,11 @@
           <!-- SQL -->
           {#if selectedNode.raw_code || selectedNode.compiled_code}
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">SQL</h2>
+              <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">SQL</h2>
               </div>
-              <div class="p-6">
-                <pre class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 overflow-x-auto text-sm"><code class="text-gray-800 dark:text-gray-200">{selectedNode.compiled_code || selectedNode.raw_code}</code></pre>
+              <div class="p-3 sm:p-4 lg:p-6">
+                <pre class="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 sm:p-4 overflow-x-auto text-xs sm:text-sm"><code class="text-gray-800 dark:text-gray-200">{selectedNode.compiled_code || selectedNode.raw_code}</code></pre>
               </div>
             </div>
           {/if}
@@ -995,30 +1082,49 @@
           <!-- Columns -->
           {#if getColumns(selectedNode).length > 0}
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Columns</h2>
+              <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Columns</h2>
               </div>
-              <div class="overflow-x-auto">
+              
+              <!-- Desktop Table View -->
+              <div class="hidden sm:block overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead class="bg-gray-50 dark:bg-gray-900/50">
                     <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                      <th class="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                      <th class="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                      <th class="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     {#each getColumns(selectedNode) as column}
                       <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{column.name}</td>
-                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                          <code class="px-2 py-1 bg-gray-100 dark:bg-gray-900 rounded text-xs">{column.type}</code>
+                        <td class="px-4 lg:px-6 py-3 sm:py-4 text-sm font-medium text-gray-900 dark:text-white">{column.name}</td>
+                        <td class="px-4 lg:px-6 py-3 sm:py-4 text-sm text-gray-500 dark:text-gray-400">
+                          <code class="px-2 py-0.5 sm:py-1 bg-gray-100 dark:bg-gray-900 rounded text-xs">{column.type}</code>
                         </td>
-                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{column.comment || '-'}</td>
+                        <td class="px-4 lg:px-6 py-3 sm:py-4 text-sm text-gray-500 dark:text-gray-400">{column.comment || '-'}</td>
                       </tr>
                     {/each}
                   </tbody>
                 </table>
+              </div>
+              
+              <!-- Mobile Card View -->
+              <div class="sm:hidden divide-y divide-gray-200 dark:divide-gray-700">
+                {#each getColumns(selectedNode) as column}
+                  <div class="p-4">
+                    <div class="font-medium text-gray-900 dark:text-white text-sm mb-1">{column.name}</div>
+                    <div class="mb-2">
+                      <code class="px-2 py-0.5 bg-gray-100 dark:bg-gray-900 rounded text-xs text-gray-600 dark:text-gray-400">{column.type}</code>
+                    </div>
+                    {#if column.comment}
+                      <div class="text-xs text-gray-500 dark:text-gray-400">{column.comment}</div>
+                    {:else}
+                      <div class="text-xs text-gray-400 dark:text-gray-500 italic">No description</div>
+                    {/if}
+                  </div>
+                {/each}
               </div>
             </div>
           {/if}
@@ -1026,20 +1132,20 @@
           <!-- Tests -->
           {#if getModelTests(selectedNode).length > 0}
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Tests</h2>
+              <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Tests</h2>
               </div>
               <div class="divide-y divide-gray-200 dark:divide-gray-700">
                 {#each getModelTests(selectedNode) as test}
-                  <div class="px-6 py-4">
+                  <div class="px-4 sm:px-6 py-3 sm:py-4">
                     <div class="flex items-start">
-                      <svg class="w-5 h-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4 sm:w-5 sm:h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                       </svg>
-                      <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-900 dark:text-white">{test.name}</p>
+                      <div class="ml-2 sm:ml-3 min-w-0 flex-1">
+                        <p class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white break-words">{test.name}</p>
                         {#if test.description}
-                          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{test.description}</p>
+                          <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">{test.description}</p>
                         {/if}
                       </div>
                     </div>
@@ -1051,26 +1157,26 @@
         </div>
 
         <!-- Sidebar (Right) -->
-        <div class="space-y-6">
+        <div class="space-y-4 sm:space-y-6">
           <!-- Dependencies -->
           {#if getUpstreamDeps(selectedNode).length > 0}
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Dependencies</h2>
+              <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Dependencies</h2>
               </div>
-              <div class="p-6 space-y-2">
+              <div class="p-4 sm:p-6 space-y-2">
                 {#each getUpstreamDeps(selectedNode) as dep}
                   {#if dep.type === 'model'}
                     <button
                       on:click={() => showModelDetail(dep.node)}
                       class="w-full flex items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                     >
-                      <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500 dark:text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
                       </svg>
-                      <span class="text-sm text-gray-700 dark:text-gray-300">{dep.name}</span>
-                      <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{dep.type}</span>
-                      <svg class="w-4 h-4 text-gray-400 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <span class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 truncate">{dep.name}</span>
+                      <span class="ml-auto text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 ml-2">{dep.type}</span>
+                      <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 ml-1 sm:ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                       </svg>
                     </button>
