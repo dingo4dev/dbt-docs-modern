@@ -9,6 +9,7 @@
   let searchQuery = '';
   let selectedNode = null;
   let view = 'overview'; // 'overview' or 'detail'
+  let selectedTags = []; // For tag filtering
 
   // Load manifest and catalog
   onMount(async () => {
@@ -37,12 +38,29 @@
   $: tests = manifest ? Object.values(manifest.nodes || {})
     .filter(node => node.resource_type === 'test') : [];
 
-  // Search filtering
-  $: filteredModels = models.filter(model => 
-    searchQuery === '' || 
-    model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (model.description && model.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Get all unique tags from models
+  $: allTags = models.reduce((tags, model) => {
+    if (model.tags && model.tags.length > 0) {
+      model.tags.forEach(tag => {
+        if (!tags.includes(tag)) tags.push(tag);
+      });
+    }
+    return tags;
+  }, []).sort();
+
+  // Search and tag filtering
+  $: filteredModels = models.filter(model => {
+    // Search filter
+    const matchesSearch = searchQuery === '' || 
+      model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (model.description && model.description.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    // Tag filter
+    const matchesTags = selectedTags.length === 0 ||
+      (model.tags && selectedTags.every(tag => model.tags.includes(tag)));
+    
+    return matchesSearch && matchesTags;
+  });
 
   // Toggle dark mode
   function toggleDarkMode() {
@@ -69,6 +87,20 @@
   function backToOverview() {
     selectedNode = null;
     view = 'overview';
+  }
+
+  // Toggle tag filter
+  function toggleTag(tag) {
+    if (selectedTags.includes(tag)) {
+      selectedTags = selectedTags.filter(t => t !== tag);
+    } else {
+      selectedTags = [...selectedTags, tag];
+    }
+  }
+
+  // Clear all tag filters
+  function clearTags() {
+    selectedTags = [];
   }
 
   // Get columns for a model from catalog
@@ -223,10 +255,62 @@
         </div>
       </div>
 
+      <!-- Tag Filter -->
+      {#if allTags.length > 0}
+        <div class="mb-6">
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Filter by Tags</h3>
+              {#if selectedTags.length > 0}
+                <button
+                  on:click={clearTags}
+                  class="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 font-medium"
+                >
+                  Clear all
+                </button>
+              {/if}
+            </div>
+            <div class="flex flex-wrap gap-2">
+              {#each allTags as tag}
+                <button
+                  on:click={() => toggleTag(tag)}
+                  class={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    selectedTags.includes(tag)
+                      ? 'bg-orange-500 text-white hover:bg-orange-600'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <svg class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                  </svg>
+                  {tag}
+                  {#if selectedTags.includes(tag)}
+                    <svg class="w-3 h-3 ml-1.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+            {#if selectedTags.length > 0}
+              <div class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                Showing models with {selectedTags.length === 1 ? 'tag' : 'all tags'}: 
+                <span class="font-medium text-gray-700 dark:text-gray-300">{selectedTags.join(', ')}</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
       <!-- Models List -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Models</h2>
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Models</h2>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {filteredModels.length} of {models.length}
+            </span>
+          </div>
         </div>
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each filteredModels.slice(0, 20) as model}
