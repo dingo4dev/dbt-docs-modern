@@ -10,6 +10,7 @@
   let selectedNode = null;
   let view = 'overview'; // 'overview' or 'detail'
   let selectedTags = []; // For tag filtering
+  let selectedMaterializations = []; // For materialization filtering
 
   // Load manifest and catalog
   onMount(async () => {
@@ -48,6 +49,13 @@
     return tags;
   }, []).sort();
 
+  // Get all unique materialization types
+  $: allMaterializations = models.reduce((types, model) => {
+    const mat = model.config?.materialized || 'view';
+    if (!types.includes(mat)) types.push(mat);
+    return types;
+  }, []).sort();
+
   // Search and tag filtering
   $: filteredModels = models.filter(model => {
     // Search filter
@@ -59,7 +67,12 @@
     const matchesTags = selectedTags.length === 0 ||
       (model.tags && selectedTags.every(tag => model.tags.includes(tag)));
     
-    return matchesSearch && matchesTags;
+    // Materialization filter
+    const mat = model.config?.materialized || 'view';
+    const matchesMat = selectedMaterializations.length === 0 ||
+      selectedMaterializations.includes(mat);
+    
+    return matchesSearch && matchesTags && matchesMat;
   });
 
   // Toggle dark mode
@@ -101,6 +114,22 @@
   // Clear all tag filters
   function clearTags() {
     selectedTags = [];
+  }
+
+  // Toggle materialization filter
+  function toggleMaterialization(mat) {
+    if (selectedMaterializations.includes(mat)) {
+      selectedMaterializations = selectedMaterializations.filter(m => m !== mat);
+    } else {
+      selectedMaterializations = [...selectedMaterializations, mat];
+    }
+  }
+
+  // Clear all filters
+  function clearAllFilters() {
+    selectedTags = [];
+    selectedMaterializations = [];
+    searchQuery = '';
   }
 
   // Get columns for a model from catalog
@@ -299,6 +328,54 @@
               </div>
             {/if}
           </div>
+        </div>
+      {/if}
+
+      <!-- Materialization Filter -->
+      {#if allMaterializations.length > 1}
+        <div class="mb-6">
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Materialization Type</h3>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              {#each allMaterializations as mat}
+                <button
+                  on:click={() => toggleMaterialization(mat)}
+                  class={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    selectedMaterializations.includes(mat)
+                      ? 'bg-green-500 text-white hover:bg-green-600'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <svg class="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                  </svg>
+                  {mat}
+                  {#if selectedMaterializations.includes(mat)}
+                    <svg class="w-3 h-3 ml-1.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Clear All Filters -->
+      {#if selectedTags.length > 0 || selectedMaterializations.length > 0 || searchQuery !== ''}
+        <div class="mb-6">
+          <button
+            on:click={clearAllFilters}
+            class="w-full px-4 py-2 text-sm font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded-lg transition-colors"
+          >
+            <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            Clear All Filters
+          </button>
         </div>
       {/if}
 
