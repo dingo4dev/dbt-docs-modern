@@ -8,6 +8,7 @@
   let darkMode = false;
   let searchQuery = '';
   let selectedNode = null;
+  let view = 'overview'; // 'overview' or 'detail'
 
   // Load manifest and catalog
   onMount(async () => {
@@ -56,6 +57,45 @@
   // Format timestamp
   function formatDate(timestamp) {
     return new Date(timestamp).toLocaleString();
+  }
+
+  // Show model details
+  function showModelDetail(model) {
+    selectedNode = model;
+    view = 'detail';
+  }
+
+  // Back to overview
+  function backToOverview() {
+    selectedNode = null;
+    view = 'overview';
+  }
+
+  // Get columns for a model from catalog
+  function getColumns(model) {
+    if (!catalog || !catalog.nodes) return [];
+    const catalogNode = catalog.nodes[model.unique_id];
+    if (!catalogNode || !catalogNode.columns) return [];
+    return Object.values(catalogNode.columns);
+  }
+
+  // Get upstream dependencies
+  function getUpstreamDeps(model) {
+    if (!model.depends_on || !model.depends_on.nodes) return [];
+    return model.depends_on.nodes
+      .map(nodeId => {
+        const node = manifest.nodes[nodeId] || manifest.sources[nodeId];
+        return node ? { id: nodeId, name: node.name, type: node.resource_type } : null;
+      })
+      .filter(Boolean);
+  }
+
+  // Get tests for a model
+  function getModelTests(model) {
+    return tests.filter(test => 
+      test.depends_on && test.depends_on.nodes && 
+      test.depends_on.nodes.includes(model.unique_id)
+    );
   }
 </script>
 
@@ -107,6 +147,7 @@
       </div>
     </div>
   {:else}
+    {#if view === 'overview'}
     <!-- Stats Overview -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -189,7 +230,10 @@
         </div>
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each filteredModels.slice(0, 20) as model}
-            <div class="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer">
+            <button
+              onclick={() => showModelDetail(model)}
+              class="w-full px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+            >
               <div class="flex items-center justify-between">
                 <div class="flex-1">
                   <h3 class="text-sm font-medium text-gray-900 dark:text-white">{model.name}</h3>
@@ -211,7 +255,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                 </svg>
               </div>
-            </div>
+            </button>
           {/each}
           {#if filteredModels.length === 0}
             <div class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
@@ -221,6 +265,181 @@
         </div>
       </div>
     </div>
+    {:else if view === 'detail' && selectedNode}
+    <!-- Model Detail View -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Back Button -->
+      <button 
+        onclick={backToOverview}
+        class="mb-6 inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+      >
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Back to Overview
+      </button>
+
+      <!-- Model Header -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+        <div class="flex items-start justify-between">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{selectedNode.name}</h1>
+            {#if selectedNode.description}
+              <p class="text-lg text-gray-600 dark:text-gray-300 mb-4">{selectedNode.description}</p>
+            {/if}
+            <div class="flex items-center space-x-3">
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                </svg>
+                {selectedNode.schema}
+              </span>
+              {#if selectedNode.config?.materialized}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                  <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                  </svg>
+                  {selectedNode.config.materialized}
+                </span>
+              {/if}
+              {#if selectedNode.config?.tags && selectedNode.config.tags.length > 0}
+                {#each selectedNode.config.tags as tag}
+                  <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                    </svg>
+                    {tag}
+                  </span>
+                {/each}
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Content (Left) -->
+        <div class="lg:col-span-2 space-y-6">
+          <!-- SQL -->
+          {#if selectedNode.raw_code || selectedNode.compiled_code}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">SQL</h2>
+              </div>
+              <div class="p-6">
+                <pre class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 overflow-x-auto text-sm"><code class="text-gray-800 dark:text-gray-200">{selectedNode.compiled_code || selectedNode.raw_code}</code></pre>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Columns -->
+          {#if getColumns(selectedNode).length > 0}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Columns</h2>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead class="bg-gray-50 dark:bg-gray-900/50">
+                    <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    {#each getColumns(selectedNode) as column}
+                      <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{column.name}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                          <code class="px-2 py-1 bg-gray-100 dark:bg-gray-900 rounded text-xs">{column.type}</code>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{column.comment || '-'}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Tests -->
+          {#if getModelTests(selectedNode).length > 0}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Tests</h2>
+              </div>
+              <div class="divide-y divide-gray-200 dark:divide-gray-700">
+                {#each getModelTests(selectedNode) as test}
+                  <div class="px-6 py-4">
+                    <div class="flex items-start">
+                      <svg class="w-5 h-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                      <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">{test.name}</p>
+                        {#if test.description}
+                          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{test.description}</p>
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Sidebar (Right) -->
+        <div class="space-y-6">
+          <!-- Dependencies -->
+          {#if getUpstreamDeps(selectedNode).length > 0}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Dependencies</h2>
+              </div>
+              <div class="p-6 space-y-2">
+                {#each getUpstreamDeps(selectedNode) as dep}
+                  <div class="flex items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50">
+                    <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                    </svg>
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{dep.name}</span>
+                    <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{dep.type}</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- File Info -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">File Info</h2>
+            </div>
+            <div class="p-6 space-y-3">
+              <div>
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Path</p>
+                <code class="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 px-2 py-1 rounded">{selectedNode.original_file_path}</code>
+              </div>
+              {#if selectedNode.database}
+                <div>
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Database</p>
+                  <p class="text-sm text-gray-900 dark:text-white">{selectedNode.database}</p>
+                </div>
+              {/if}
+              {#if selectedNode.alias}
+                <div>
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Alias</p>
+                  <p class="text-sm text-gray-900 dark:text-white">{selectedNode.alias}</p>
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {/if}
   {/if}
 </main>
 
