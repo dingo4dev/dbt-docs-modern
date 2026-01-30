@@ -203,16 +203,16 @@
     window.graphSvg = svg;
     window.graphG = g;
     
-    // Create force simulation with LEFT-TO-RIGHT layout (horizontal)
+    // Create force simulation with LEFT-TO-RIGHT layout (horizontal) - WIDER spacing
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(links)
         .id(d => d.id)
-        .distance(250)) // Increased for horizontal spacing
+        .distance(300)) // Increased from 250 for wider tables
       .force('charge', d3.forceManyBody()
-        .strength(-800)) // Stronger repulsion for horizontal spread
+        .strength(-1000)) // Stronger repulsion from -800
       .force('x', d3.forceX(width / 2).strength(0.05)) // Weak horizontal centering
       .force('y', d3.forceY(height / 2).strength(0.3)) // Stronger vertical centering (keep in rows)
-      .force('collision', d3.forceCollide().radius(90)); // Larger collision radius for horizontal layout
+      .force('collision', d3.forceCollide().radius(120)); // Larger collision for 200px wide tables
     
     // Add arrow markers for directed edges with animation
     const defs = svg.append('defs');
@@ -299,7 +299,7 @@
       .attr('opacity', 0.6)
       .attr('stroke-dasharray', '5,5');
     
-    // Draw nodes as tables
+    // Draw nodes as tables with MODERN styling
     const node = g.append('g')
       .selectAll('g')
       .data(nodes)
@@ -310,70 +310,137 @@
         .on('drag', dragged)
         .on('end', dragended));
     
-    // Node background (table card)
+    // Drop shadow filter for modern look
+    const filter = defs.append('filter')
+      .attr('id', 'node-shadow')
+      .attr('x', '-50%')
+      .attr('y', '-50%')
+      .attr('width', '200%')
+      .attr('height', '200%');
+    
+    filter.append('feGaussianBlur')
+      .attr('in', 'SourceAlpha')
+      .attr('stdDeviation', 3);
+    
+    filter.append('feOffset')
+      .attr('dx', 0)
+      .attr('dy', 2)
+      .attr('result', 'offsetblur');
+    
+    filter.append('feComponentTransfer')
+      .append('feFuncA')
+      .attr('type', 'linear')
+      .attr('slope', 0.2);
+    
+    const feMerge = filter.append('feMerge');
+    feMerge.append('feMergeNode');
+    feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+    
+    // Node background (table card) - WIDER
     node.append('rect')
-      .attr('width', 160) // Increased width for badges
+      .attr('width', 200) // Increased from 160 to 200
       .attr('height', d => {
         const cols = getNodeColumnsForGraph(d);
-        return 40 + (cols.length * 24); // Header 40px + 24px per column
+        return 45 + (cols.length * 28); // Increased spacing: 45px header + 28px per row
       })
-      .attr('x', -80)
+      .attr('x', -100)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(40 + (cols.length * 24)) / 2;
+        return -(45 + (cols.length * 28)) / 2;
       })
-      .attr('rx', 6)
+      .attr('rx', 8) // More rounded corners
       .attr('fill', 'white')
       .attr('stroke', d => d.id === selectedModel ? '#fbbf24' : getNodeColor(d))
       .attr('stroke-width', d => d.id === selectedModel ? 3 : 2)
+      .attr('filter', 'url(#node-shadow)')
       .attr('class', 'transition-all dark:fill-gray-800');
+    
+    // Table header with gradient effect
+    const headerGradient = defs.append('linearGradient')
+      .attr('id', 'header-gradient')
+      .attr('x1', '0%')
+      .attr('y1', '0%')
+      .attr('x2', '0%')
+      .attr('y2', '100%');
+    
+    headerGradient.append('stop')
+      .attr('offset', '0%')
+      .attr('stop-opacity', 1);
+    
+    headerGradient.append('stop')
+      .attr('offset', '100%')
+      .attr('stop-opacity', 0.85);
     
     // Table header (node name + type)
     node.append('rect')
-      .attr('width', 160)
-      .attr('height', 32)
-      .attr('x', -80)
+      .attr('width', 200)
+      .attr('height', 38)
+      .attr('x', -100)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(40 + (cols.length * 24)) / 2;
+        return -(45 + (cols.length * 28)) / 2;
       })
-      .attr('rx', 6)
+      .attr('rx', 8)
       .attr('fill', d => getNodeColor(d))
+      .style('fill', d => `url(#header-gradient-${d.type})`)
       .attr('class', 'transition-all');
     
-    // LEFT TOP BADGE: Materialization type (for models)
+    // Create per-type gradients
+    ['model', 'source', 'seed', 'snapshot', 'test'].forEach(type => {
+      const color = getNodeColor({ type });
+      const grad = defs.append('linearGradient')
+        .attr('id', `header-gradient-${type}`)
+        .attr('x1', '0%')
+        .attr('y1', '0%')
+        .attr('x2', '0%')
+        .attr('y2', '100%');
+      
+      grad.append('stop')
+        .attr('offset', '0%')
+        .attr('stop-color', color)
+        .attr('stop-opacity', 1);
+      
+      grad.append('stop')
+        .attr('offset', '100%')
+        .attr('stop-color', color)
+        .attr('stop-opacity', 0.8);
+    });
+    
+    // LEFT TOP BADGE: Materialization type (for models) - MODERN style
     node.filter(d => d.type === 'model').append('g')
       .attr('transform', d => {
         const cols = getNodeColumnsForGraph(d);
-        const topY = -(40 + (cols.length * 24)) / 2;
-        return `translate(-75, ${topY + 5})`;
+        const topY = -(45 + (cols.length * 28)) / 2;
+        return `translate(-92, ${topY + 6})`;
       })
       .call(g => {
-        // Badge background
+        // Badge background with gradient
         g.append('rect')
           .attr('width', d => {
             const text = d.materialization || 'view';
-            return text.length * 5 + 8;
+            return text.length * 5.5 + 10;
           })
-          .attr('height', 14)
-          .attr('rx', 3)
-          .attr('fill', 'rgba(255,255,255,0.25)');
+          .attr('height', 16)
+          .attr('rx', 4)
+          .attr('fill', 'rgba(0,0,0,0.15)')
+          .attr('class', 'backdrop-blur-sm');
         
         // Badge text
         g.append('text')
           .text(d => (d.materialization || 'view').substring(0, 4).toUpperCase())
-          .attr('x', 4)
-          .attr('y', 10)
+          .attr('x', 5)
+          .attr('y', 11)
           .attr('class', 'fill-white text-xs font-bold pointer-events-none')
-          .style('font-size', '9px');
+          .style('font-size', '10px')
+          .style('letter-spacing', '0.5px');
       });
     
-    // RIGHT TOP BADGE: Resource type
+    // RIGHT TOP BADGE: Resource type - MODERN style
     node.append('g')
       .attr('transform', d => {
         const cols = getNodeColumnsForGraph(d);
-        const topY = -(40 + (cols.length * 24)) / 2;
-        return `translate(45, ${topY + 5})`;
+        const topY = -(45 + (cols.length * 28)) / 2;
+        return `translate(50, ${topY + 6})`;
       })
       .call(g => {
         // Badge background
@@ -387,11 +454,12 @@
               test: 'TEST'
             };
             const text = typeLabels[d.type] || d.type.toUpperCase();
-            return text.length * 5.5 + 8;
+            return text.length * 6 + 10;
           })
-          .attr('height', 14)
-          .attr('rx', 3)
-          .attr('fill', 'rgba(255,255,255,0.3)');
+          .attr('height', 16)
+          .attr('rx', 4)
+          .attr('fill', 'rgba(0,0,0,0.15)')
+          .attr('class', 'backdrop-blur-sm');
         
         // Badge text
         g.append('text')
@@ -405,57 +473,73 @@
             };
             return typeLabels[d.type] || d.type.toUpperCase();
           })
-          .attr('x', 4)
-          .attr('y', 10)
+          .attr('x', 5)
+          .attr('y', 11)
           .attr('class', 'fill-white text-xs font-bold pointer-events-none')
-          .style('font-size', '9px');
+          .style('font-size', '10px')
+          .style('letter-spacing', '0.5px');
       });
     
-    // Node name (header text, centered)
+    // Node name (header text, centered) - LARGER
     node.append('text')
-      .text(d => d.name.length > 18 ? d.name.substring(0, 16) + '..' : d.name)
+      .text(d => d.name.length > 22 ? d.name.substring(0, 20) + '..' : d.name)
       .attr('x', 0)
       .attr('y', d => {
         const cols = getNodeColumnsForGraph(d);
-        return -(40 + (cols.length * 24)) / 2 + 24;
+        return -(45 + (cols.length * 28)) / 2 + 28;
       })
       .attr('text-anchor', 'middle')
-      .attr('class', 'fill-white text-sm font-bold pointer-events-none');
+      .attr('class', 'fill-white text-base font-bold pointer-events-none')
+      .style('font-size', '14px');
     
-    // Column rows
+    // Column rows - WIDER spacing
     node.each(function(d) {
       const cols = getNodeColumnsForGraph(d);
       const nodeGroup = d3.select(this);
-      const startY = -(40 + (cols.length * 24)) / 2 + 40;
+      const startY = -(45 + (cols.length * 28)) / 2 + 45;
       
       cols.forEach((col, i) => {
-        const y = startY + (i * 24);
+        const y = startY + (i * 28);
         
-        // Column name
+        // Column background for hover effect (every other row)
+        if (i % 2 === 1) {
+          nodeGroup.append('rect')
+            .attr('width', 196)
+            .attr('height', 26)
+            .attr('x', -98)
+            .attr('y', y - 10)
+            .attr('fill', '#f9fafb')
+            .attr('class', 'dark:fill-gray-900/30');
+        }
+        
+        // Column name - LARGER
         nodeGroup.append('text')
-          .text(col.name.length > 14 ? col.name.substring(0, 12) + '..' : col.name)
-          .attr('x', -75)
-          .attr('y', y + 8)
+          .text(col.name.length > 16 ? col.name.substring(0, 14) + '..' : col.name)
+          .attr('x', -92)
+          .attr('y', y + 4)
           .attr('text-anchor', 'start')
-          .attr('class', 'fill-gray-700 dark:fill-gray-300 text-xs pointer-events-none');
+          .attr('class', 'fill-gray-800 dark:fill-gray-200 text-sm font-medium pointer-events-none')
+          .style('font-size', '12px');
         
-        // Column type
+        // Column type - LARGER
         nodeGroup.append('text')
-          .text((col.type || col.data_type || 'str').substring(0, 10))
-          .attr('x', 75)
-          .attr('y', y + 8)
+          .text((col.type || col.data_type || 'string').substring(0, 12))
+          .attr('x', 92)
+          .attr('y', y + 4)
           .attr('text-anchor', 'end')
-          .attr('class', 'fill-gray-500 dark:fill-gray-400 text-xs font-mono pointer-events-none');
+          .attr('class', 'fill-gray-500 dark:fill-gray-400 text-xs font-mono pointer-events-none')
+          .style('font-size', '11px');
         
         // Separator line
         if (i < cols.length - 1) {
           nodeGroup.append('line')
-            .attr('x1', -75)
-            .attr('x2', 75)
-            .attr('y1', y + 12)
-            .attr('y2', y + 12)
+            .attr('x1', -92)
+            .attr('x2', 92)
+            .attr('y1', y + 14)
+            .attr('y2', y + 14)
             .attr('stroke', '#e5e7eb')
             .attr('stroke-width', 1)
+            .attr('opacity', 0.5)
             .attr('class', 'dark:stroke-gray-700');
         }
       });
@@ -465,13 +549,14 @@
         const fullNode = manifest.nodes[d.id];
         const totalCols = fullNode?.columns ? Object.keys(fullNode.columns).length : 0;
         if (totalCols > 3) {
-          const y = startY + (cols.length * 24) - 8;
+          const y = startY + (cols.length * 28) - 6;
           nodeGroup.append('text')
-            .text(`+${totalCols - 3} more...`)
+            .text(`+${totalCols - 3} more columns...`)
             .attr('x', 0)
             .attr('y', y)
             .attr('text-anchor', 'middle')
-            .attr('class', 'fill-gray-400 dark:fill-gray-500 text-xs italic pointer-events-none');
+            .attr('class', 'fill-gray-400 dark:fill-gray-500 text-xs italic pointer-events-none')
+            .style('font-size', '11px');
         }
       }
     });
@@ -483,13 +568,13 @@
       // Don't trigger navigation, just show sidebar
     });
     
-    // Hover effects
+    // Hover effects - MODERN
     node.on('mouseenter', function(event, d) {
       d3.select(this).select('rect')
         .transition()
         .duration(200)
-        .attr('stroke-width', 3)
-        .attr('filter', 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))');
+        .attr('stroke-width', 4)
+        .attr('transform', 'scale(1.02)'); // Slight scale up
       
       // Highlight connected links
       link
@@ -499,7 +584,7 @@
             : 'base-link stroke-gray-300 dark:stroke-gray-600'
         )
         .attr('stroke-width', l => 
-          (l.source.id === d.id || l.target.id === d.id) ? 3 : 2
+          (l.source.id === d.id || l.target.id === d.id) ? 4 : 2
         )
         .attr('marker-end', l =>
           (l.source.id === d.id || l.target.id === d.id) 
@@ -510,7 +595,10 @@
       // Make animated links more visible on connected edges
       animatedLink
         .attr('opacity', l => 
-          (l.source.id === d.id || l.target.id === d.id) ? 0.9 : 0.3
+          (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.2
+        )
+        .attr('stroke-width', l => 
+          (l.source.id === d.id || l.target.id === d.id) ? 4 : 3
         );
     });
     
@@ -519,7 +607,7 @@
         .transition()
         .duration(200)
         .attr('stroke-width', d.id === selectedModel ? 3 : 2)
-        .attr('filter', 'none');
+        .attr('transform', 'scale(1)');
       
       link
         .attr('class', 'base-link stroke-gray-300 dark:stroke-gray-600')
@@ -527,7 +615,8 @@
         .attr('marker-end', 'url(#arrow)');
       
       animatedLink
-        .attr('opacity', 0.6);
+        .attr('opacity', 0.6)
+        .attr('stroke-width', 3);
     });
     
     // Update positions on tick
@@ -864,11 +953,11 @@
       <svg bind:this={svgContainer} class="w-full h-full"></svg>
     </div>
     
-    <!-- Details Sidebar -->
+    <!-- Details Sidebar - SCROLLABLE -->
     {#if selectedNode}
-      <div class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
-        <!-- Sidebar Header -->
-        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between">
+      <div class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col max-h-full">
+        <!-- Sidebar Header - FIXED -->
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between flex-shrink-0">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-2">
               <div class={`w-3 h-3 rounded-full ${
@@ -891,7 +980,7 @@
           </div>
           <button
             on:click={() => selectedNode = null}
-            class="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+            class="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex-shrink-0"
           >
             <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -899,8 +988,8 @@
           </button>
         </div>
         
-        <!-- Sidebar Content -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- Sidebar Content - SCROLLABLE with max-height -->
+        <div class="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4" style="max-height: calc(100vh - 200px);">
           <!-- Description -->
           {#if selectedNode.description}
             <div>
@@ -975,8 +1064,8 @@
           {/if}
         </div>
         
-        <!-- Sidebar Footer with action button -->
-        <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+        <!-- Sidebar Footer - FIXED -->
+        <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
           <button
             on:click={() => selectedNode = null}
             class="w-full px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
