@@ -153,6 +153,14 @@
     return colors[node.type] || '#6b7280';
   }
   
+  // Get columns for a node (from manifest)
+  function getNodeColumnsForGraph(node) {
+    if (!manifest || !manifest.nodes) return [];
+    const fullNode = manifest.nodes[node.id];
+    if (!fullNode || !fullNode.columns) return [];
+    return Object.values(fullNode.columns).slice(0, 3); // Top 3 for graph display
+  }
+  
   // Render the graph
   function renderGraph() {
     if (!svgContainer || !width) return;
@@ -195,15 +203,15 @@
     window.graphSvg = svg;
     window.graphG = g;
     
-    // Create force simulation
+    // Create force simulation with adjusted parameters for table layout
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(links)
         .id(d => d.id)
-        .distance(150))
+        .distance(200)) // Increased distance for table spacing
       .force('charge', d3.forceManyBody()
-        .strength(-300))
+        .strength(-500)) // Stronger repulsion
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(50));
+      .force('collision', d3.forceCollide().radius(80)); // Larger collision radius for tables
     
     // Add arrow markers for directed edges with animation
     const defs = svg.append('defs');
@@ -290,7 +298,7 @@
       .attr('opacity', 0.6)
       .attr('stroke-dasharray', '5,5');
     
-    // Draw nodes
+    // Draw nodes as tables
     const node = g.append('g')
       .selectAll('g')
       .data(nodes)
@@ -301,29 +309,101 @@
         .on('drag', dragged)
         .on('end', dragended));
     
-    // Node circles
-    node.append('circle')
-      .attr('r', 20)
+    // Node background (table card)
+    node.append('rect')
+      .attr('width', 140)
+      .attr('height', d => {
+        const cols = getNodeColumnsForGraph(d);
+        return 40 + (cols.length * 24); // Header 40px + 24px per column
+      })
+      .attr('x', -70)
+      .attr('y', d => {
+        const cols = getNodeColumnsForGraph(d);
+        return -(40 + (cols.length * 24)) / 2;
+      })
+      .attr('rx', 6)
+      .attr('fill', 'white')
+      .attr('stroke', d => d.id === selectedModel ? '#fbbf24' : getNodeColor(d))
+      .attr('stroke-width', d => d.id === selectedModel ? 3 : 2)
+      .attr('class', 'transition-all dark:fill-gray-800');
+    
+    // Table header (node name + type)
+    node.append('rect')
+      .attr('width', 140)
+      .attr('height', 32)
+      .attr('x', -70)
+      .attr('y', d => {
+        const cols = getNodeColumnsForGraph(d);
+        return -(40 + (cols.length * 24)) / 2;
+      })
+      .attr('rx', 6)
       .attr('fill', d => getNodeColor(d))
-      .attr('stroke', d => d.id === selectedModel ? '#fbbf24' : '#fff')
-      .attr('stroke-width', d => d.id === selectedModel ? 4 : 2)
       .attr('class', 'transition-all');
     
-    // Node labels
+    // Node name (header text)
     node.append('text')
-      .text(d => d.name)
+      .text(d => d.name.length > 16 ? d.name.substring(0, 14) + '..' : d.name)
       .attr('x', 0)
-      .attr('y', 35)
+      .attr('y', d => {
+        const cols = getNodeColumnsForGraph(d);
+        return -(40 + (cols.length * 24)) / 2 + 20;
+      })
       .attr('text-anchor', 'middle')
-      .attr('class', 'fill-gray-700 dark:fill-gray-300 text-xs font-medium pointer-events-none');
+      .attr('class', 'fill-white text-sm font-bold pointer-events-none');
     
-    // Node type badge
-    node.append('text')
-      .text(d => d.type.charAt(0).toUpperCase())
-      .attr('x', 0)
-      .attr('y', 5)
-      .attr('text-anchor', 'middle')
-      .attr('class', 'fill-white text-xs font-bold pointer-events-none');
+    // Column rows
+    node.each(function(d) {
+      const cols = getNodeColumnsForGraph(d);
+      const nodeGroup = d3.select(this);
+      const startY = -(40 + (cols.length * 24)) / 2 + 40;
+      
+      cols.forEach((col, i) => {
+        const y = startY + (i * 24);
+        
+        // Column name
+        nodeGroup.append('text')
+          .text(col.name.length > 12 ? col.name.substring(0, 10) + '..' : col.name)
+          .attr('x', -65)
+          .attr('y', y + 8)
+          .attr('text-anchor', 'start')
+          .attr('class', 'fill-gray-700 dark:fill-gray-300 text-xs pointer-events-none');
+        
+        // Column type
+        nodeGroup.append('text')
+          .text((col.type || col.data_type || 'str').substring(0, 8))
+          .attr('x', 65)
+          .attr('y', y + 8)
+          .attr('text-anchor', 'end')
+          .attr('class', 'fill-gray-500 dark:fill-gray-400 text-xs font-mono pointer-events-none');
+        
+        // Separator line
+        if (i < cols.length - 1) {
+          nodeGroup.append('line')
+            .attr('x1', -65)
+            .attr('x2', 65)
+            .attr('y1', y + 12)
+            .attr('y2', y + 12)
+            .attr('stroke', '#e5e7eb')
+            .attr('stroke-width', 1)
+            .attr('class', 'dark:stroke-gray-700');
+        }
+      });
+      
+      // Show "+N more" if more columns exist
+      if (cols.length >= 3) {
+        const fullNode = manifest.nodes[d.id];
+        const totalCols = fullNode?.columns ? Object.keys(fullNode.columns).length : 0;
+        if (totalCols > 3) {
+          const y = startY + (cols.length * 24) - 8;
+          nodeGroup.append('text')
+            .text(`+${totalCols - 3} more...`)
+            .attr('x', 0)
+            .attr('y', y)
+            .attr('text-anchor', 'middle')
+            .attr('class', 'fill-gray-400 dark:fill-gray-500 text-xs italic pointer-events-none');
+        }
+      }
+    });
     
     // Click handler
     node.on('click', (event, d) => {
@@ -337,10 +417,11 @@
     
     // Hover effects
     node.on('mouseenter', function(event, d) {
-      d3.select(this).select('circle')
+      d3.select(this).select('rect')
         .transition()
         .duration(200)
-        .attr('r', 25);
+        .attr('stroke-width', 3)
+        .attr('filter', 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))');
       
       // Highlight connected links
       link
@@ -366,10 +447,11 @@
     });
     
     node.on('mouseleave', function(event, d) {
-      d3.select(this).select('circle')
+      d3.select(this).select('rect')
         .transition()
         .duration(200)
-        .attr('r', 20);
+        .attr('stroke-width', d.id === selectedModel ? 3 : 2)
+        .attr('filter', 'none');
       
       link
         .attr('class', 'base-link stroke-gray-300 dark:stroke-gray-600')
@@ -415,24 +497,27 @@
       d.fy = null;
     }
     
-    // Initial zoom to fit
-    const bounds = g.node().getBBox();
-    const fullWidth = bounds.width;
-    const fullHeight = bounds.height;
-    const midX = bounds.x + fullWidth / 2;
-    const midY = bounds.y + fullHeight / 2;
-    
-    if (fullWidth === 0 || fullHeight === 0) return;
-    
-    const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
-    const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
-    
-    svg.transition()
-      .duration(750)
-      .call(
-        zoom.transform,
-        d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-      );
+    // Initial zoom to fit (more zoomed out)
+    setTimeout(() => {
+      const bounds = g.node().getBBox();
+      const fullWidth = bounds.width;
+      const fullHeight = bounds.height;
+      const midX = bounds.x + fullWidth / 2;
+      const midY = bounds.y + fullHeight / 2;
+      
+      if (fullWidth === 0 || fullHeight === 0) return;
+      
+      // Use 0.6 scale factor for more zoomed out view (was 0.8)
+      const scale = 0.6 / Math.max(fullWidth / width, fullHeight / height);
+      const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
+      
+      svg.transition()
+        .duration(750)
+        .call(
+          zoom.transform,
+          d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+        );
+    }, 100); // Small delay to let simulation stabilize
   }
   
   onMount(() => {
@@ -505,7 +590,8 @@
     
     if (fullWidth === 0 || fullHeight === 0) return;
     
-    const scale = 0.8 / Math.max(fullWidth / width, fullHeight / height);
+    // Use 0.6 scale factor for consistent zoomed out view
+    const scale = 0.6 / Math.max(fullWidth / width, fullHeight / height);
     const translate = [width / 2 - scale * midX, height / 2 - scale * midY];
     
     window.graphSvg.transition()
