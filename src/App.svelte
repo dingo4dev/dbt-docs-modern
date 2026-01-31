@@ -1329,4 +1329,72 @@
     margin: 0;
     padding: 0;
   }
+  
+  /* Layout fixes */
+  
+  /* 1. Left-align the title */
+  :global(header .flex.items-center.justify-between .flex.items-center) {
+    justify-content: flex-start !important;
+  }
+  
+  :global(header h1) {
+    text-align: left !important;
+  }
+  
+  /* 2. Fix sidebar z-index to prevent blocking */
+  :global(aside.fixed) {
+    z-index: 30 !important;
+  }
+  
+  :global(header) {
+    z-index: 40 !important;
+  }
+  
+  /* 3. Add collapse button for desktop sidebar */
+  :global(aside.fixed::before) {
+    content: "◀";
+    position: absolute;
+    right: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 40px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-left: none;
+    border-radius: 0 8px 8px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    color: #6b7280;
+    transition: all 0.3s;
+  }
+  
+  :global(aside.fixed:hover::before) {
+    background: #f3f4f6;
+    color: #374151;
+  }
+  
+  /* Dark mode support */
+  @media (prefers-color-scheme: dark) {
+    :global(aside.fixed::before) {
+      background: #1f2937;
+      border-color: #374151;
+      color: #9ca3af;
+    }
+    
+    :global(aside.fixed:hover::before) {
+      background: #374151;
+      color: #e5e7eb;
+    }
+  }
+  
+  /* Mobile: hide the pseudo-element collapse button */
+  @media (max-width: 1023px) {
+    :global(aside.fixed::before) {
+      display: none !important;
+    }
+  }
 </style>
