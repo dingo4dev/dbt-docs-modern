@@ -45,17 +45,52 @@
       if (savedRecents) recentModels = JSON.parse(savedRecents);
       if (savedFavorites) favoriteModels = JSON.parse(savedFavorites);
       
-      // Try to load from current directory (dbt docs serve)
-      const [manifestRes, catalogRes] = await Promise.all([
-        fetch('./manifest.json'),
-        fetch('./catalog.json')
-      ]);
+      // Try multiple paths to support different deployments
+      const paths = [
+        { manifest: './manifest.json', catalog: './catalog.json' },
+        { manifest: 'manifest.json', catalog: 'catalog.json' },
+        { manifest: '/manifest.json', catalog: '/catalog.json' }
+      ];
       
-      manifest = await manifestRes.json();
-      catalog = await catalogRes.json();
+      let loaded = false;
+      let lastError = null;
+      
+      for (const path of paths) {
+        try {
+          const [manifestRes, catalogRes] = await Promise.all([
+            fetch(path.manifest, { 
+              cache: 'no-cache',
+              headers: { 'Accept': 'application/json' }
+            }),
+            fetch(path.catalog, { 
+              cache: 'no-cache',
+              headers: { 'Accept': 'application/json' }
+            })
+          ]);
+          
+          if (!manifestRes.ok || !catalogRes.ok) {
+            throw new Error(`HTTP error! manifest: ${manifestRes.status}, catalog: ${catalogRes.status}`);
+          }
+          
+          manifest = await manifestRes.json();
+          catalog = await catalogRes.json();
+          loaded = true;
+          break;
+        } catch (err) {
+          lastError = err;
+          console.warn(`Failed to load from ${path.manifest}:`, err);
+          continue;
+        }
+      }
+      
+      if (!loaded) {
+        throw lastError || new Error('Failed to load from all paths');
+      }
+      
       loading = false;
     } catch (err) {
-      error = 'Failed to load dbt documentation files. Make sure manifest.json and catalog.json exist in the same directory.';
+      console.error('Error loading dbt docs:', err);
+      error = `Failed to load dbt documentation files. Make sure manifest.json and catalog.json exist in the same directory.\n\nDetails: ${err.message}`;
       loading = false;
     }
     
