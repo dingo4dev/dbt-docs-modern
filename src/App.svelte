@@ -32,12 +32,23 @@
   let breadcrumb = []; // Array of { type, name, id }
   
   // Sidebar navigation (default closed on mobile, open on desktop)
-  let sidebarOpen = typeof window !== 'undefined' ? window.innerWidth >= 1024 : true;
+  let sidebarOpen = true;
   let expandedFolders = new Set(); // Set of expanded folder paths (e.g., "models.staging")
 
   // Load manifest and catalog
   onMount(async () => {
     try {
+      // Initialize dark mode from system preference or localStorage
+      const savedDarkMode = localStorage.getItem('dbt-docs-dark-mode');
+      if (savedDarkMode !== null) {
+        darkMode = savedDarkMode === 'true';
+      } else {
+        darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+      if (darkMode) {
+        document.documentElement.classList.add('dark');
+      }
+      
       // Load recent/favorites from localStorage
       const savedRecents = localStorage.getItem('dbt-docs-recents');
       const savedFavorites = localStorage.getItem('dbt-docs-favorites');
@@ -49,6 +60,7 @@
       const paths = [
         { manifest: './manifest.json', catalog: './catalog.json' },
         { manifest: 'manifest.json', catalog: 'catalog.json' },
+        { manifest: '/demo/manifest.json', catalog: '/demo/catalog.json' },
         { manifest: '/manifest.json', catalog: '/catalog.json' }
       ];
       
@@ -157,6 +169,19 @@
   // Get models from manifest
   $: models = manifest ? Object.values(manifest.nodes || {})
     .filter(node => node.resource_type === 'model') : [];
+  
+  // Build folder tree from models
+  $: folderTree = models.reduce((tree, model) => {
+    // Get folder path from model (use schema or package name)
+    const folderName = model.schema || model.package_name || 'default';
+    
+    if (!tree[folderName]) {
+      tree[folderName] = { models: [] };
+    }
+    
+    tree[folderName].models.push(model);
+    return tree;
+  }, {});
   
   $: sources = manifest ? Object.values(manifest.sources || {}) : [];
   
@@ -318,6 +343,7 @@
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('dbt-docs-dark-mode', String(darkMode));
   }
 
   // Format timestamp
@@ -509,7 +535,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
               {#if recentModels.length > 0}
-                <span class="absolute top-0 right-0 w-2 h-2 bg-orange-500 rounded-full"></span>
+                <span class="absolute top-0 right-0 w-2 h-2 bg-blue-600 rounded-full"></span>
               {/if}
             </button>
             
@@ -662,125 +688,137 @@
     </div>
   {:else}
     <!-- Main Layout with Sidebar -->
-    <div class="flex relative">
+    <div class="flex min-h-screen">
       <!-- Mobile Backdrop Overlay -->
       {#if sidebarOpen}
+        <button 
+          class="lg:hidden fixed inset-0 bg-black/50 z-40 top-14 sm:top-16 w-full h-full border-0 cursor-pointer"
+          on:click={() => sidebarOpen = false}
+          aria-label="Close sidebar"
+        ></button>
+      {/if}
+      
+      <!-- Mobile sidebar backdrop -->
+      {#if sidebarOpen}
         <div 
-          class="lg:hidden fixed inset-0 bg-black/50 z-40 top-14"
+          class="fixed inset-0 z-40 bg-gray-900/80 backdrop-blur-sm lg:hidden"
           on:click={() => sidebarOpen = false}
         ></div>
       {/if}
       
-      <!-- Left Sidebar (Folder Navigation) -->
-      {#if sidebarOpen}
-        <aside class="fixed left-0 top-14 sm:top-16 bottom-0 w-64 sm:w-72 lg:w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto z-50 lg:z-30 shadow-xl lg:shadow-lg transition-transform duration-300">
-          <div class="p-3 sm:p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-                </svg>
-                Project Structure
-              </h3>
-              <!-- Close button for mobile -->
-              <button
-                on:click={() => sidebarOpen = false}
-                class="lg:hidden p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-            
-            <!-- Folder Tree -->
+      <!-- Mobile sidebar -->
+      <div class="fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-gray-900 transform transition-transform duration-300 lg:hidden {sidebarOpen ? 'translate-x-0' : '-translate-x-full'}">
+        <div class="flex h-16 shrink-0 items-center px-6 border-b border-gray-200 dark:border-white/10">
+          <span class="text-lg font-bold text-gray-900 dark:text-white">Material Docs</span>
+        </div>
+        <nav class="flex-1 overflow-y-auto p-3">
+          <ul class="space-y-1">
             {#if Object.keys(folderTree).length === 0}
-              <div class="text-sm text-gray-500 dark:text-gray-400 italic p-2">
-                No models found.
-              </div>
+              <li class="text-sm text-gray-500 dark:text-gray-400">No models found.</li>
             {:else}
-            {#each Object.entries(folderTree) as [rootName, rootFolder]}
-                <div class="mb-2">
-                  <!-- Root Folder Button -->
-                  <button
-                    on:click={() => toggleFolder(rootName)}
-                    class="w-full flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-                  >
-                    <svg class="w-3 h-3 transition-transform {expandedFolders.has(rootName) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {#each Object.entries(folderTree) as [rootName, rootFolder]}
+                <li>
+                  <button on:click={() => toggleFolder(rootName)} class="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
+                    <svg class="w-4 h-4 transition-transform {expandedFolders.has(rootName) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
-                    <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
-                    </svg>
-                    {rootName}
-                    <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{countModels(rootFolder)}</span>
+                    <span>{rootName}</span>
+                    <span class="ml-auto text-xs text-gray-500">{countModels(rootFolder)}</span>
                   </button>
-                  
                   {#if expandedFolders.has(rootName)}
-                    <div class="ml-3 mt-1 space-y-0.5">
-                      <!-- Subfolders -->
-                      {#each Object.entries(rootFolder.children || {}) as [childName, childFolder]}
-                        <div class="mb-1">
-                          <button
-                            on:click={() => toggleFolder(childFolder.path || `${rootName}/${childName}`)}
-                            class="w-full flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-                          >
-                            <svg class="w-2.5 h-2.5 transition-transform {expandedFolders.has(childFolder.path || `${rootName}/${childName}`) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                            </svg>
-                            <svg class="w-3.5 h-3.5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
-                            </svg>
-                            {childName}
-                            <span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{countModels(childFolder)}</span>
-                          </button>
-                          
-                          {#if expandedFolders.has(childFolder.path || `${rootName}/${childName}`)}
-                            <div class="ml-4 mt-0.5 space-y-0.5">
-                              {#each childFolder.models as model}
-                                <button
-                                  on:click={() => showModelDetail(model)}
-                                  class="w-full flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors {selectedNode?.unique_id === model.unique_id ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-600 dark:text-gray-400'}"
-                                  title={model.name}
-                                >
-                                  <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                                  </svg>
-                                  <span class="truncate">{model.name}</span>
-                                </button>
-                              {/each}
-                            </div>
-                          {/if}
-                        </div>
-                      {/each}
-                      
-                      <!-- Root-level models (if any) -->
+                    <ul class="mt-1 ml-4 space-y-1">
                       {#each rootFolder.models as model}
-                        <button
-                          on:click={() => showModelDetail(model)}
-                          class="w-full flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors {selectedNode?.unique_id === model.unique_id ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-600 dark:text-gray-400'}"
-                          title={model.name}
-                        >
-                          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                          </svg>
-                          <span class="truncate">{model.name}</span>
-                        </button>
+                        <li>
+                          <button on:click={() => { showModelDetail(model); sidebarOpen = false; }} class="w-full text-left px-3 py-1.5 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                            {model.name}
+                          </button>
+                        </li>
                       {/each}
-                    </div>
+                    </ul>
                   {/if}
-                </div>
-            {/each}
+                </li>
+              {/each}
             {/if}
-          </div>
-        </aside>
-      {/if}
+          </ul>
+        </nav>
+      </div>
       
-      <!-- Main Content (with left margin when sidebar open) -->
-      <div class="flex-1 lg:{sidebarOpen ? 'ml-64' : 'ml-0'} transition-all duration-300">
+      <!-- Desktop sidebar -->
+      <div class="hidden lg:block lg:fixed lg:inset-y-0 lg:z-30 lg:w-64 border-r border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900 transition-transform duration-300 {sidebarOpen ? '' : 'lg:-translate-x-full'}">
+        <div class="flex grow flex-col gap-y-5 overflow-y-auto px-6 pb-4">
+          <div class="flex h-16 shrink-0 items-center">
+            <span class="text-xl font-bold text-gray-900 dark:text-white">Material Docs</span>
+          </div>
+          <nav class="flex flex-1 flex-col">
+            <ul role="list" class="flex flex-1 flex-col gap-y-7">
+              <li>
+                <ul role="list" class="-mx-2 space-y-1">
+                  {#if Object.keys(folderTree).length === 0}
+                    <li class="text-sm text-gray-500 dark:text-gray-400 px-2">No models found.</li>
+                  {:else}
+                    {#each Object.entries(folderTree) as [rootName, rootFolder]}
+                      <li>
+                        <button on:click={() => toggleFolder(rootName)} class="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
+                          <svg class="w-4 h-4 transition-transform {expandedFolders.has(rootName) ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                          </svg>
+                          <span>{rootName}</span>
+                          <span class="ml-auto text-xs text-gray-500">{countModels(rootFolder)}</span>
+                        </button>
+                        {#if expandedFolders.has(rootName)}
+                          <ul class="mt-1 ml-4 space-y-1">
+                            {#each rootFolder.models as model}
+                              <li>
+                                <button on:click={() => showModelDetail(model)} class="w-full text-left px-2 py-1 text-sm rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 {selectedNode?.unique_id === model.unique_id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium' : ''}">
+                                  {model.name}
+                                </button>
+                              </li>
+                            {/each}
+                          </ul>
+                        {/if}
+                      </li>
+                    {/each}
+                  {/if}
+                </ul>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+      
+
+      
+      <!-- Mobile header -->
+      <div class="sticky top-0 z-30 flex items-center gap-x-4 bg-white px-4 py-3 shadow-sm sm:px-6 lg:hidden dark:bg-gray-800 dark:shadow-none dark:border-b dark:border-white/10">
+        <button type="button" on:click={() => sidebarOpen = !sidebarOpen} class="-m-2.5 p-2.5 text-gray-700 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
+          <span class="sr-only">Open sidebar</span>
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
+          </svg>
+        </button>
+        <div class="flex-1 text-sm/6 font-semibold text-gray-900 dark:text-white">Material Docs</div>
+      </div>
+      
+      <!-- Desktop sidebar toggle button -->
+      <button
+        on:click={() => sidebarOpen = !sidebarOpen}
+        class="hidden lg:flex fixed top-1/2 z-40 w-6 h-12 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-r-lg items-center justify-center shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 {sidebarOpen ? 'left-64' : 'left-0'}"
+        style="transform: translateY(-50%);"
+        title="Toggle sidebar"
+      >
+        <svg class="w-4 h-4 text-gray-600 dark:text-gray-300 transition-transform {sidebarOpen ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      
+      <!-- Main Content -->
+      
+
+        
+        <div class="transition-all duration-300" class:lg:ml-64={sidebarOpen}>
     {#if view === 'overview'}
     <!-- Stats Overview -->
-    <div class="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+    <div class="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 max-w-7xl">
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 lg:p-6 min-h-[80px] sm:min-h-[96px]">
           <div class="flex items-center h-full">
@@ -826,7 +864,7 @@
 
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 lg:p-6 min-h-[80px] sm:min-h-[96px]">
           <div class="flex items-center h-full">
-            <div class="flex-shrink-0 bg-orange-500 rounded-lg p-2 sm:p-3">
+            <div class="flex-shrink-0 bg-blue-600 rounded-lg p-2 sm:p-3">
               <svg class="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
@@ -863,7 +901,7 @@
               {#if selectedTags.length > 0}
                 <button
                   on:click={clearTags}
-                  class="text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 font-medium"
+                  class="text-xs text-blue-600 dark:text-blue-400 hover:text-orange-700 dark:hover:text-orange-300 font-medium"
                 >
                   Clear all
                 </button>
@@ -875,7 +913,7 @@
                   on:click={() => toggleTag(tag)}
                   class={`inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                     selectedTags.includes(tag)
-                      ? 'bg-orange-500 text-white hover:bg-orange-600'
+                      ? 'bg-blue-600 text-white hover:bg-orange-600'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
                 >
@@ -948,7 +986,7 @@
         <div class="mb-6">
           <button
             on:click={clearAllFilters}
-            class="w-full px-4 py-2 text-sm font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded-lg transition-colors"
+            class="w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded-lg transition-colors"
           >
             <svg class="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -1115,7 +1153,7 @@
           <div>
             <button
               on:click={() => showLineageGraph(selectedNode)}
-              class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
+              class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-orange-600 rounded-lg transition-colors"
             >
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 12h16m-7 5h7"/>
@@ -1376,60 +1414,15 @@
     text-align: left !important;
   }
   
-  /* 2. Fix sidebar z-index to prevent blocking */
-  :global(aside.fixed) {
-    z-index: 30 !important;
-  }
-  
+  /* Ensure proper z-index stacking */
   :global(header) {
     z-index: 40 !important;
   }
   
-  /* 3. Add collapse button for desktop sidebar */
-  :global(aside.fixed::before) {
-    content: "◀";
-    position: absolute;
-    right: -20px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 20px;
-    height: 40px;
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-left: none;
-    border-radius: 0 8px 8px 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 12px;
-    color: #6b7280;
-    transition: all 0.3s;
-  }
-  
-  :global(aside.fixed:hover::before) {
-    background: #f3f4f6;
-    color: #374151;
-  }
-  
   /* Dark mode support */
   @media (prefers-color-scheme: dark) {
-    :global(aside.fixed::before) {
-      background: #1f2937;
-      border-color: #374151;
-      color: #9ca3af;
-    }
-    
-    :global(aside.fixed:hover::before) {
-      background: #374151;
-      color: #e5e7eb;
-    }
-  }
-  
-  /* Mobile: hide the pseudo-element collapse button */
-  @media (max-width: 1023px) {
-    :global(aside.fixed::before) {
-      display: none !important;
+    :global(body) {
+      background-color: #111827;
     }
   }
 </style>
