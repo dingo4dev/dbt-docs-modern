@@ -7,6 +7,18 @@ export default defineConfig({
     svelte(),
     viteSingleFile()
   ],
+  server: {
+    proxy: {
+      '/manifest.json': {
+        target: 'http://localhost:5173',
+        rewrite: () => '/data/manifest.json'
+      },
+      '/catalog.json': {
+        target: 'http://localhost:5173',
+        rewrite: () => '/data/catalog.json'
+      }
+    }
+  },
   build: {
     target: 'esnext',
     assetsInlineLimit: 100000000,
